@@ -1,0 +1,29 @@
+{
+  "name": "sei-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "sei": "./src/cli.ts"
+  },
+  "scripts": {
+    "sei": "bun run src/cli.ts",
+    "extrair": "bun run src/cli.ts extrair",
+    "ler": "bun run src/cli.ts ler",
+    "inspecionar": "bun run src/cli.ts inspecionar",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "fflate": "^0.8.2",
+    "mime-types": "^2.1.35",
+    "playwright": "^1.59.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/mime-types": "^2.1.4",
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.3"
+  }
+}
