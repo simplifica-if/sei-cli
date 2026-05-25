@@ -15,6 +15,29 @@ bun run sei inspecionar historico dados/sei/00000.000000_0000-00/<execucao> --ul
 
 Por padrão, os comandos imprimem um resumo humano em português. Use `--json` para saída estruturada.
 
+## Para agentes de IA
+
+Este repositório foi pensado para gerar pastas que agentes de IA possam pesquisar depois. Cada execução cria uma fotografia local de um processo e inclui um `AGENTS.md` específico para aquele snapshot:
+
+```text
+dados/sei/<numero-processo>/<execucao>/
+  AGENTS.md
+  processo.json
+  processo.zip
+  documentos/
+  logs/execucao.log
+```
+
+Em geral, use `processo.json` como índice canônico e `documentos[].caminho_relativo` para abrir arquivos. Para instruções completas de pesquisa e citação, leia o `AGENTS.md` dentro da pasta de execução.
+
+Comandos úteis para começar:
+
+```bash
+bun run inspecionar ultima-atualizacao <runDir> --json
+bun run inspecionar documentos <runDir> --ultimos 20 --json
+bun run inspecionar historico <runDir> --ultimos 50 --json
+```
+
 ## Variáveis de ambiente
 
 `extrair` lê `.env.local` e o ambiente atual:

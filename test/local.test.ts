@@ -50,6 +50,10 @@ describe("extração local", () => {
     await expect(readFile(path.join(saida, "logs", "execucao.log"), "utf-8")).resolves.toContain(
       "copiado e analisado",
     );
+    const instrucoesAgente = await readFile(path.join(saida, "AGENTS.md"), "utf-8");
+    expect(instrucoesAgente).toContain("processo SEI 00000.000000/0000-00");
+    expect(instrucoesAgente).toContain("processo.json");
+    expect(instrucoesAgente).toContain("documentos[].caminho_relativo");
 
     const processo = await carregarProcessoParaInspecao(saida);
     expect(listarUltimosDocumentos(processo, 1)[0]?.titulo).toContain("despacho");
@@ -75,5 +79,8 @@ describe("extração local", () => {
     expect(resultado.processo.artefatos.zip_original).toBe("processo.zip");
     expect(resultado.processo.documentos[0]?.numero_sei).toBe("7654321");
     expect(resultado.processo.documentos[0]?.tipo_documento).toBe("PDF");
+    await expect(readFile(path.join(saida, "AGENTS.md"), "utf-8")).resolves.toContain(
+      "processo.zip",
+    );
   });
 });
