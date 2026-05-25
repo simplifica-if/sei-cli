@@ -2,7 +2,11 @@ import { writeFile } from "node:fs/promises";
 import { chromium, type Dialog, type Frame, type Locator, type Page } from "playwright";
 import type { EventoExtracao } from "../tipos";
 import { mapearMetadadosDocumentosPorHistorico } from "../dominio/autoriaDocumentalSei";
-import { obterUltimaMovimentacao } from "../dominio/historico";
+import {
+  extrairResumoPaginacaoHistoricoSei,
+  formatarResumoPaginacaoHistoricoSei,
+  obterUltimaMovimentacao,
+} from "../dominio/historico";
 import { agoraIso } from "../dominio/tempo";
 import { textoCompacto, validarNumeroProcessoSei } from "../dominio/texto";
 import { extrairHistoricoDasLinhasHistoricoSei } from "../dominio/historico";
@@ -172,6 +176,37 @@ async function resolverUrlAcao(locator: Locator, origem: Page, mensagemErro: str
     throw new Error(mensagemErro);
   }
   return new URL(href, origem.url()).toString();
+}
+
+async function localizarProximaPaginaHistorico(frame: Frame) {
+  const tentativas = [
+    frame.locator('a[title*="Próxima Página" i]'),
+    frame.locator('a[title*="Proxima Pagina" i]'),
+    frame.getByRole("link", { name: /próxima página|proxima pagina/i }),
+  ];
+
+  for (const locator of tentativas) {
+    const primeiro = locator.first();
+    if ((await primeiro.count().catch(() => 0)) > 0) {
+      return primeiro;
+    }
+  }
+
+  return null;
+}
+
+async function coletarPaginaHistorico(frame: Frame) {
+  return frame.evaluate(() => {
+    const texto = document.body.innerText.replace(/\s+/g, " ").trim();
+    const linhas = Array.from(document.querySelectorAll("table tr"))
+      .map((linha) => linha.textContent?.replace(/\s+/g, " ").trim() ?? "")
+      .filter(Boolean);
+
+    return {
+      linhas,
+      resumo: texto.match(/Lista de Andamentos \([^)]*\)/i)?.[0] ?? null,
+    };
+  });
 }
 
 export async function extrairProcessoSei(args: {
@@ -432,9 +467,9 @@ async function coletarHistoricoProcesso(page: Page) {
   try {
     await aba.goto(url, { waitUntil: "domcontentloaded" });
     await aba.waitForTimeout(500);
-    const historicoCompleto = await localizarPrimeiroLocatorNaPagina(aba, [
-      () => aba.getByRole("link", { name: /ver histórico completo/i }),
-      () => aba.getByText(/ver histórico completo/i),
+    const historicoCompleto = await localizarPrimeiroLocator(aba, [
+      (frame) => frame.getByRole("link", { name: /ver histórico completo/i }),
+      (frame) => frame.getByText(/ver histórico completo/i),
     ]);
     if (historicoCompleto) {
       await Promise.all([
@@ -443,8 +478,48 @@ async function coletarHistoricoProcesso(page: Page) {
       ]);
       await aba.waitForTimeout(500);
     }
-    const texto = await aba.locator("body").innerText().catch(() => "");
-    return extrairHistoricoDasLinhasHistoricoSei(texto.split("\n"));
+
+    const frameHistorico =
+      aba.frames().find((frame) => frame.name() === "ifrVisualizacao") ?? aba.mainFrame();
+    const linhas: string[] = [];
+
+    while (true) {
+      const paginaAtual = await coletarPaginaHistorico(frameHistorico);
+      linhas.push(...paginaAtual.linhas);
+
+      const resumoPaginacao = extrairResumoPaginacaoHistoricoSei(paginaAtual.resumo ?? undefined);
+      if (!resumoPaginacao || resumoPaginacao.fim >= resumoPaginacao.total_registros) {
+        break;
+      }
+
+      const proximaPagina = await localizarProximaPaginaHistorico(frameHistorico);
+      if (!proximaPagina) {
+        throw new Error(
+          `Histórico do processo incompleto no SEI: a paginação indica ${formatarResumoPaginacaoHistoricoSei(resumoPaginacao)}, mas o link para a próxima página não foi localizado.`,
+        );
+      }
+
+      const resumoAnterior = paginaAtual.resumo;
+      await proximaPagina.click();
+
+      let resumoMudou = false;
+      for (let tentativa = 0; tentativa < 20; tentativa += 1) {
+        await aba.waitForTimeout(250);
+        const paginaSeguinte = await coletarPaginaHistorico(frameHistorico);
+        if (paginaSeguinte.resumo && paginaSeguinte.resumo !== resumoAnterior) {
+          resumoMudou = true;
+          break;
+        }
+      }
+
+      if (!resumoMudou) {
+        throw new Error(
+          `Histórico do processo incompleto no SEI: a paginação não avançou após clicar em próxima página (${formatarResumoPaginacaoHistoricoSei(resumoPaginacao)}).`,
+        );
+      }
+    }
+
+    return extrairHistoricoDasLinhasHistoricoSei(linhas);
   } finally {
     await aba.close().catch(() => {});
   }

@@ -28,7 +28,7 @@ dados/sei/<numero-processo>/<execucao>/
   logs/execucao.log
 ```
 
-Em geral, use `processo.json` como índice canônico e `documentos[].caminho_relativo` para abrir arquivos. Para instruções completas de pesquisa e citação, leia o `AGENTS.md` dentro da pasta de execução.
+Em geral, use `processo.json` como índice canônico, `ultima_movimentacao` e `historico` para entender a movimentação administrativa, e `documentos[].caminho_relativo` para abrir arquivos. Para instruções completas de pesquisa e citação, leia o `AGENTS.md` dentro da pasta de execução.
 
 Comandos úteis para começar:
 

@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { extrairNumeroSeiDoEventoHistorico, resolverMetadadosDocumentoSei } from "../src/dominio/autoriaDocumentalSei";
 import { extrairNumeroSeiDoNomeArquivo, inferirTipoDocumento } from "../src/dominio/documentos";
-import { extrairHistoricoDasLinhasHistoricoSei, obterUltimaMovimentacao } from "../src/dominio/historico";
+import {
+  extrairHistoricoDasLinhasHistoricoSei,
+  extrairResumoPaginacaoHistoricoSei,
+  formatarResumoPaginacaoHistoricoSei,
+  obterUltimaMovimentacao,
+} from "../src/dominio/historico";
 
 describe("domínio SEI", () => {
   test("extrai histórico de linhas copiadas do SEI", () => {
@@ -15,6 +20,20 @@ describe("domínio SEI", () => {
     expect(historico[0]?.unidade).toBe("PROENS");
     expect(extrairNumeroSeiDoEventoHistorico(historico[0]!.descricao)).toBe("1234567");
     expect(obterUltimaMovimentacao(historico)?.descricao).toContain("Gerado documento");
+  });
+
+  test("extrai resumo de paginação do histórico do SEI", () => {
+    const resumo = extrairResumoPaginacaoHistoricoSei(
+      "Lista de Andamentos (135 registros - 51 a 100)",
+    );
+
+    expect(resumo).toEqual({
+      total_registros: 135,
+      inicio: 51,
+      fim: 100,
+    });
+    expect(formatarResumoPaginacaoHistoricoSei(resumo)).toBe("51 a 100 de 135");
+    expect(extrairResumoPaginacaoHistoricoSei("sem paginação")).toBeUndefined();
   });
 
   test("infere tipo e número SEI pelo arquivo", () => {
@@ -33,4 +52,3 @@ describe("domínio SEI", () => {
     expect(metadados.origem_criado_em).toBe("html_primeira_assinatura");
   });
 });
-

@@ -1,6 +1,12 @@
 import type { HistoricoProcessoItem } from "../tipos";
 import { textoCompacto } from "./texto";
 
+export interface ResumoPaginacaoHistoricoSei {
+  total_registros: number;
+  inicio: number;
+  fim: number;
+}
+
 function converterDataHoraSeiParaIso(dataHora: string) {
   const partes = dataHora.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/);
   if (!partes) {
@@ -14,6 +20,42 @@ function extrairLinhasUteisHistoricoSei(linhas: string[]) {
   return linhas
     .map((linha) => textoCompacto(linha))
     .filter((linha) => Boolean(linha) && /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}\b/.test(linha));
+}
+
+export function extrairResumoPaginacaoHistoricoSei(
+  texto?: string,
+): ResumoPaginacaoHistoricoSei | undefined {
+  if (!texto) {
+    return undefined;
+  }
+
+  const correspondencia = texto.match(
+    /Lista de Andamentos \((\d+) registros - (\d+) a (\d+)\)/i,
+  );
+  if (!correspondencia) {
+    return undefined;
+  }
+
+  const totalRegistros = Number.parseInt(correspondencia[1] ?? "", 10);
+  const inicio = Number.parseInt(correspondencia[2] ?? "", 10);
+  const fim = Number.parseInt(correspondencia[3] ?? "", 10);
+  if (![totalRegistros, inicio, fim].every(Number.isFinite)) {
+    return undefined;
+  }
+
+  return {
+    total_registros: totalRegistros,
+    inicio,
+    fim,
+  };
+}
+
+export function formatarResumoPaginacaoHistoricoSei(resumo?: ResumoPaginacaoHistoricoSei) {
+  if (!resumo) {
+    return "resumo de paginação indisponível";
+  }
+
+  return `${resumo.inicio} a ${resumo.fim} de ${resumo.total_registros}`;
 }
 
 export function extrairHistoricoDasLinhasHistoricoSei(linhas: string[]): HistoricoProcessoItem[] {
