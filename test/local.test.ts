@@ -54,6 +54,8 @@ describe("extração local", () => {
     expect(instrucoesAgente).toContain("processo SEI 00000.000000/0000-00");
     expect(instrucoesAgente).toContain("processo.json");
     expect(instrucoesAgente).toContain("documentos[].caminho_relativo");
+    expect(instrucoesAgente).toContain("documentos[].unidade_sei");
+    expect(instrucoesAgente).toContain("documentos[].caminho_hierarquico");
     expect(instrucoesAgente).toContain("ultima_movimentacao");
     expect(instrucoesAgente).toContain("histórico completo");
 

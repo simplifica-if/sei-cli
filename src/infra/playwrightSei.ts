@@ -1,6 +1,12 @@
 import { writeFile } from "node:fs/promises";
 import { chromium, type Dialog, type Frame, type Locator, type Page } from "playwright";
-import type { EventoExtracao } from "../tipos";
+import type { DocumentoProcesso, EventoExtracao } from "../tipos";
+import {
+  combinarDocumentosArvoreSei,
+  normalizarDocumentoArvoreSei,
+  type DocumentoArvoreSei,
+  type DocumentoArvoreSeiBruto,
+} from "../dominio/arvoreSei";
 import { mapearMetadadosDocumentosPorHistorico } from "../dominio/autoriaDocumentalSei";
 import {
   extrairResumoPaginacaoHistoricoSei,
@@ -209,6 +215,182 @@ async function coletarPaginaHistorico(frame: Frame) {
   });
 }
 
+async function expandirArvoreCompleta(frameArvore: Pick<Frame, "evaluate">) {
+  const prazoMaximoMs = 60_000;
+  const inicioMs = Date.now();
+
+  while (true) {
+    const estadoArvore = await frameArvore.evaluate(`(() => {
+      const pastas = Array.from(document.querySelectorAll('a[id^="anchorPASTA"]'));
+      const pastasOcultas = [];
+      const pastasCarregando = [];
+
+      for (const ancora of pastas) {
+        const pastaId = (ancora.id || '').replace(/^anchor/, '');
+        const divPasta = document.getElementById('div' + pastaId);
+        if (!divPasta) {
+          continue;
+        }
+
+        const estilo = divPasta instanceof HTMLElement ? divPasta.style.display : '';
+        const estaOculta = estilo === 'none';
+        const estaCarregando = /Aguarde\\.\\.\\./i.test(divPasta.textContent || '');
+
+        if (estaOculta) {
+          pastasOcultas.push(pastaId);
+          continue;
+        }
+
+        if (estaCarregando) {
+          pastasCarregando.push(pastaId);
+        }
+      }
+
+      return { pastasOcultas, pastasCarregando };
+    })()`) as {
+      pastasOcultas: string[];
+      pastasCarregando: string[];
+    };
+
+    if (!estadoArvore.pastasOcultas.length && !estadoArvore.pastasCarregando.length) {
+      break;
+    }
+
+    if (!estadoArvore.pastasOcultas.length) {
+      if (Date.now() - inicioMs > prazoMaximoMs) {
+        throw new Error(
+          "A árvore do processo no SEI não terminou de carregar dentro do tempo esperado.",
+        );
+      }
+      await esperar(250);
+      continue;
+    }
+
+    const pastaId = estadoArvore.pastasOcultas[0]!;
+    const pastaIdSerializada = JSON.stringify(pastaId);
+    await frameArvore.evaluate(`(() => {
+      const pastaId = ${pastaIdSerializada};
+      const ancora =
+        document.getElementById('anchor' + pastaId) || document.getElementById('ancjoin' + pastaId);
+      if (ancora instanceof HTMLElement) {
+        ancora.click();
+      }
+    })()`);
+
+    while (true) {
+      const pastaCarregada = await frameArvore.evaluate(`(() => {
+        const pastaId = ${pastaIdSerializada};
+        const divPasta = document.getElementById('div' + pastaId);
+        if (!divPasta) {
+          return true;
+        }
+
+        const estilo = divPasta instanceof HTMLElement ? divPasta.style.display : '';
+        const estaOculta = estilo === 'none';
+        const estaCarregando = /Aguarde\\.\\.\\./i.test(divPasta.textContent || '');
+        return !estaOculta && !estaCarregando;
+      })()`);
+
+      if (pastaCarregada) {
+        break;
+      }
+
+      if (Date.now() - inicioMs > prazoMaximoMs) {
+        throw new Error(
+          `A pasta ${pastaId} da árvore do processo no SEI não terminou de carregar dentro do tempo esperado.`,
+        );
+      }
+      await esperar(250);
+    }
+  }
+}
+
+async function extrairMapaDocumentosArvoreSei(page: Page) {
+  const frameArvore = page.frames().find((frame) => frame.name() === "ifrArvore");
+  if (!frameArvore) {
+    return {};
+  }
+
+  await expandirArvoreCompleta(frameArvore);
+  const documentosBrutos = await frameArvore.evaluate(`(() => {
+    const normalizarTexto = (valor) => valor?.replace(/\\s+/g, " ").trim() ?? "";
+    const limparRotulo = (valor) =>
+      normalizarTexto(valor).replace(/\\s*\\(\\d{6,}\\)\\s*$/u, "").trim();
+    const lerCaminhoHierarquico = (ancoraDocumento) => {
+      const segmentos = [];
+      let elementoAtual = ancoraDocumento.parentElement;
+
+      while (elementoAtual) {
+        const divPasta = elementoAtual.closest('div.infraArvore[id^="divPASTA"]');
+        if (!divPasta) {
+          break;
+        }
+
+        const pastaId = (divPasta.id || '').replace(/^div/, '');
+        const ancoraPasta = document.getElementById('anchor' + pastaId);
+        const rotulo = limparRotulo(ancoraPasta?.textContent || ancoraPasta?.getAttribute('title'));
+        if (rotulo) {
+          segmentos.push(rotulo);
+        }
+        elementoAtual = divPasta.parentElement;
+      }
+
+      return segmentos.reverse();
+    };
+
+    const lerUnidadeSei = (documentoId) => {
+      const ancoraUnidade = document.getElementById('anchorUG' + documentoId);
+      return normalizarTexto(ancoraUnidade?.textContent);
+    };
+
+    return Array.from(document.querySelectorAll('a.infraArvoreNo[id^="anchor"]'))
+      .flatMap((elemento) => {
+        const documentoId = (elemento.id || '').replace(/^anchor/, '');
+        if (!/^\\d+$/.test(documentoId)) {
+          return [];
+        }
+
+        const texto = normalizarTexto(elemento.textContent);
+        const titulo = normalizarTexto(elemento.getAttribute('title'));
+        const conteudo = texto || titulo;
+        if (!/^(.*?)\\s*(?:\\((\\d{6,})\\)|(\\d{6,}))\\s*$/u.test(conteudo)) {
+          return [];
+        }
+
+        return [{
+          texto: conteudo,
+          unidade_sei: lerUnidadeSei(documentoId),
+          caminho_hierarquico: lerCaminhoHierarquico(elemento),
+        }];
+      });
+  })()`) as DocumentoArvoreSeiBruto[];
+
+  const documentos = documentosBrutos
+    .map((documento) => normalizarDocumentoArvoreSei(documento))
+    .filter((documento): documento is DocumentoArvoreSei => documento !== null);
+
+  return combinarDocumentosArvoreSei(documentos);
+}
+
+function aplicarMetadadosArvoreNosDocumentos(
+  documentos: DocumentoProcesso[],
+  mapaDocumentosArvore: Record<string, DocumentoArvoreSei>,
+) {
+  return documentos.map((documento) => {
+    const documentoArvore = documento.numero_sei ? mapaDocumentosArvore[documento.numero_sei] : undefined;
+    if (!documentoArvore) {
+      return documento;
+    }
+
+    return {
+      ...documento,
+      titulo: documentoArvore.titulo || documento.titulo,
+      unidade_sei: documentoArvore.unidade_sei ?? documento.unidade_sei,
+      caminho_hierarquico: documentoArvore.caminho_hierarquico ?? documento.caminho_hierarquico,
+    };
+  });
+}
+
 export async function extrairProcessoSei(args: {
   numeroProcesso: string;
   saida?: string;
@@ -356,6 +538,21 @@ export async function extrairProcessoSei(args: {
     await registrar("download", `ZIP salvo em ${paths.caminhoZipOriginal}.`);
     await extrairZipParaDiretorio(paths.caminhoZipOriginal, paths.diretorioDocumentos);
 
+    const mapaDocumentosArvore = await extrairMapaDocumentosArvoreSei(page).catch(async (error) => {
+      await registrar(
+        "arvore",
+        `Não foi possível coletar a árvore do processo: ${error instanceof Error ? error.message : String(error)}`,
+        "aviso",
+      );
+      return {};
+    });
+    if (Object.keys(mapaDocumentosArvore).length) {
+      await registrar(
+        "arvore",
+        `${Object.keys(mapaDocumentosArvore).length} documento(s) identificados na árvore do SEI.`,
+      );
+    }
+
     const metadados: MetadadosProcessoSei = await coletarMetadadosProcesso(page).catch(async (error) => {
       await registrar(
         "metadados",
@@ -387,7 +584,10 @@ export async function extrairProcessoSei(args: {
     processo.historico = historico;
     processo.ultima_movimentacao = obterUltimaMovimentacao(historico);
     const metadadosPorDocumento = mapearMetadadosDocumentosPorHistorico(historico);
-    processo.documentos = processo.documentos.map((documento) => {
+    processo.documentos = aplicarMetadadosArvoreNosDocumentos(
+      processo.documentos,
+      mapaDocumentosArvore,
+    ).map((documento) => {
       const metadadosDocumento = documento.numero_sei
         ? metadadosPorDocumento[documento.numero_sei]
         : undefined;

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { normalizarDocumentoArvoreSei } from "../src/dominio/arvoreSei";
 import { extrairNumeroSeiDoEventoHistorico, resolverMetadadosDocumentoSei } from "../src/dominio/autoriaDocumentalSei";
 import { extrairNumeroSeiDoNomeArquivo, inferirTipoDocumento } from "../src/dominio/documentos";
 import {
@@ -34,6 +35,23 @@ describe("domínio SEI", () => {
     });
     expect(formatarResumoPaginacaoHistoricoSei(resumo)).toBe("51 a 100 de 135");
     expect(extrairResumoPaginacaoHistoricoSei("sem paginação")).toBeUndefined();
+  });
+
+  test("normaliza documentos da árvore do processo SEI", () => {
+    expect(
+      normalizarDocumentoArvoreSei({
+        texto: "Despacho de aprovação (1234567)",
+        unidade_sei: "PROENS",
+        caminho_hierarquico: ["00000.000000/0000-00", "Anexos", "Despacho de aprovação"],
+      }),
+    ).toEqual({
+      numero_sei: "1234567",
+      titulo: "Despacho de aprovação",
+      unidade_sei: "PROENS",
+      caminho_hierarquico: ["Anexos"],
+    });
+
+    expect(normalizarDocumentoArvoreSei({ texto: "Pasta sem número" })).toBeNull();
   });
 
   test("infere tipo e número SEI pelo arquivo", () => {
