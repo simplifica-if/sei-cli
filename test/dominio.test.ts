@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { normalizarDocumentoArvoreSei } from "../src/dominio/arvoreSei";
-import { extrairNumeroSeiDoEventoHistorico, resolverMetadadosDocumentoSei } from "../src/dominio/autoriaDocumentalSei";
+import {
+  extrairNomesAssinaturaHtmlSei,
+  extrairNumeroSeiDoEventoHistorico,
+  resolverMetadadosDocumentoSei,
+} from "../src/dominio/autoriaDocumentalSei";
 import { extrairNumeroSeiDoNomeArquivo, inferirTipoDocumento } from "../src/dominio/documentos";
 import {
   extrairHistoricoDasLinhasHistoricoSei,
@@ -68,5 +72,15 @@ describe("domínio SEI", () => {
 
     expect(metadados.criado_em).toBe("2026-05-25T13:44:00-03:00");
     expect(metadados.origem_criado_em).toBe("html_primeira_assinatura");
+  });
+
+  test("extrai nomes de assinantes de documentos HTML do SEI", () => {
+    const nomes = extrairNomesAssinaturaHtmlSei(`
+      <p>Documento assinado eletronicamente por Maria Silva, Coordenadora, em 25/05/2026, às 13:44.</p>
+      <p>Documento assinado eletronicamente por João de Souza, em 26/05/2026, às 09:10.</p>
+      <p>Documento assinado eletronicamente por Maria Silva, Coordenadora, em 27/05/2026, às 10:20.</p>
+    `);
+
+    expect(nomes).toEqual(["João de Souza", "Maria Silva"]);
   });
 });
