@@ -177,11 +177,26 @@ async function preencherCampo(campo: Locator, valor: string) {
 }
 
 async function resolverUrlAcao(locator: Locator, origem: Page, mensagemErro: string) {
-  const href = await locator.getAttribute("href").catch(() => null);
+  const href = await locator
+    .evaluate((elemento) => {
+      const hrefDireto = elemento.getAttribute("href");
+      if (hrefDireto) {
+        return hrefDireto;
+      }
+      return elemento.closest("a[href]")?.getAttribute("href") ?? null;
+    })
+    .catch(() => null);
   if (!href) {
     throw new Error(mensagemErro);
   }
   return new URL(href, origem.url()).toString();
+}
+
+async function abrirCopiaPaginaProcesso(page: Page) {
+  const aba = await page.context().newPage();
+  await aba.goto(page.url(), { waitUntil: "domcontentloaded" });
+  await aba.waitForTimeout(1_000);
+  return aba;
 }
 
 async function localizarProximaPaginaHistorico(frame: Frame) {
@@ -569,6 +584,9 @@ export async function extrairProcessoSei(args: {
       );
       return [];
     });
+    if (historico.length) {
+      await registrar("historico", `${historico.length} movimentação(ões) capturada(s) do histórico do processo.`);
+    }
 
     const processo = await montarProcessoDeDiretorio({
       numeroProcesso,
@@ -620,20 +638,20 @@ export async function extrairProcessoSei(args: {
 }
 
 async function coletarMetadadosProcesso(page: Page): Promise<MetadadosProcessoSei> {
-  const acao = await localizarPrimeiroLocator(page, [
-    (frame) => frame.getByRole("link", { name: /consultar(?:\/alterar)? processo/i }),
-    (frame) => frame.locator('a[href*="acao=procedimento_alterar"]'),
-    (frame) => frame.locator('a[href*="acao=procedimento_consultar"]'),
-    (frame) => frame.locator('[title*="Consultar/Alterar Processo" i]'),
-    (frame) => frame.locator('[title*="Consultar Processo" i]'),
-  ]);
-  if (!acao) {
-    return {};
-  }
-
-  const url = await resolverUrlAcao(acao, page, "Ação de consulta do processo sem URL.");
-  const aba = await page.context().newPage();
+  const aba = await abrirCopiaPaginaProcesso(page);
   try {
+    const acao = await localizarPrimeiroLocator(aba, [
+      (frame) => frame.getByRole("link", { name: /consultar(?:\/alterar)? processo/i }),
+      (frame) => frame.locator('a[href*="acao=procedimento_alterar"]'),
+      (frame) => frame.locator('a[href*="acao=procedimento_consultar"]'),
+      (frame) => frame.locator('[title*="Consultar/Alterar Processo" i]'),
+      (frame) => frame.locator('[title*="Consultar Processo" i]'),
+    ]);
+    if (!acao) {
+      return {};
+    }
+
+    const url = await resolverUrlAcao(acao, aba, "Ação de consulta do processo sem URL.");
     await aba.goto(url, { waitUntil: "domcontentloaded" });
     await aba.waitForTimeout(500);
     const texto = await aba.locator("body").innerText().catch(() => "");
@@ -653,20 +671,19 @@ async function coletarMetadadosProcesso(page: Page): Promise<MetadadosProcessoSe
 }
 
 async function coletarHistoricoProcesso(page: Page) {
-  const acao = await localizarPrimeiroLocator(page, [
-    (frame) => frame.getByRole("link", { name: /consultar andamento/i }),
-    (frame) => frame.locator('[title*="Consultar Andamento" i]'),
-    (frame) => frame.getByText(/consultar andamento/i),
-  ]);
-  if (!acao) {
-    return [];
-  }
-
-  const url = await resolverUrlAcao(acao, page, "Ação de consultar andamento sem URL.");
-  const aba = await page.context().newPage();
+  const aba = await abrirCopiaPaginaProcesso(page);
   try {
-    await aba.goto(url, { waitUntil: "domcontentloaded" });
-    await aba.waitForTimeout(500);
+    const acao = await localizarPrimeiroLocator(aba, [
+      (frame) => frame.getByRole("link", { name: /consultar andamento/i }),
+      (frame) => frame.locator('[title*="Consultar Andamento" i]'),
+      (frame) => frame.getByText(/consultar andamento/i),
+    ]);
+    if (!acao) {
+      throw new Error("Ação Consultar Andamento não localizada na página do processo.");
+    }
+
+    await acao.click();
+    await aba.waitForTimeout(1_000);
     const historicoCompleto = await localizarPrimeiroLocator(aba, [
       (frame) => frame.getByRole("link", { name: /ver histórico completo/i }),
       (frame) => frame.getByText(/ver histórico completo/i),
@@ -679,8 +696,11 @@ async function coletarHistoricoProcesso(page: Page) {
       await aba.waitForTimeout(500);
     }
 
-    const frameHistorico =
-      aba.frames().find((frame) => frame.name() === "ifrVisualizacao") ?? aba.mainFrame();
+    const frameHistorico = aba.frames().find((frame) => frame.name() === "ifrVisualizacao");
+    if (!frameHistorico) {
+      throw new Error("Frame de visualização do histórico não localizado após abrir Consultar Andamento.");
+    }
+
     const linhas: string[] = [];
 
     while (true) {
@@ -719,7 +739,12 @@ async function coletarHistoricoProcesso(page: Page) {
       }
     }
 
-    return extrairHistoricoDasLinhasHistoricoSei(linhas);
+    const historico = extrairHistoricoDasLinhasHistoricoSei(linhas);
+    if (!historico.length) {
+      throw new Error("A tela de histórico foi aberta, mas nenhuma movimentação pôde ser interpretada.");
+    }
+
+    return historico;
   } finally {
     await aba.close().catch(() => {});
   }
