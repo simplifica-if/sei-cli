@@ -54,6 +54,8 @@ describe("extração local", () => {
     expect(instrucoesAgente).toContain("processo SEI 00000.000000/0000-00");
     expect(instrucoesAgente).toContain("processo.json");
     expect(instrucoesAgente).toContain("documentos[].caminho_relativo");
+    expect(instrucoesAgente).toContain("ultima_movimentacao");
+    expect(instrucoesAgente).toContain("histórico completo");
 
     const processo = await carregarProcessoParaInspecao(saida);
     expect(listarUltimosDocumentos(processo, 1)[0]?.titulo).toContain("despacho");

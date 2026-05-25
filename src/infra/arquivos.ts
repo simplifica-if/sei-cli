@@ -119,10 +119,12 @@ Esta pasta é uma fotografia local completa do processo SEI ${processo.numero_pr
 ## Fluxo recomendado
 
 1. Leia \`processo.json\` antes de abrir documentos soltos.
-2. Use \`documentos[].numero_sei\`, \`titulo\`, \`tipo_documento\`, \`criado_em\`, \`modificado_em\` e \`caminho_relativo\` para escolher arquivos relevantes.
-3. Para HTML e textos simples, pesquise em \`${processo.artefatos.diretorio_documentos}\` com \`rg\`.
-4. Para PDFs, use uma ferramenta própria de leitura de PDF; este snapshot preserva PDFs, mas não garante texto extraído ou OCR.
-5. Ao responder, cite sempre o número SEI, o título e o caminho relativo do documento usado.
+2. Consulte \`ultima_movimentacao\` e \`historico\` para entender a movimentação administrativa do processo. No fluxo \`extrair\`, o CLI tenta capturar o histórico completo, incluindo páginas seguintes quando o SEI pagina a tela "Lista de Andamentos".
+3. Use \`documentos[].numero_sei\`, \`titulo\`, \`tipo_documento\`, \`criado_em\`, \`modificado_em\` e \`caminho_relativo\` para escolher arquivos relevantes.
+4. Para relacionar documentos ao histórico, procure o \`numero_sei\` nas descrições de \`historico[]\`, como "Gerado documento público" ou "Registro de documento externo".
+5. Para HTML e textos simples, pesquise em \`${processo.artefatos.diretorio_documentos}\` com \`rg\`.
+6. Para PDFs, use uma ferramenta própria de leitura de PDF; este snapshot preserva PDFs, mas não garante texto extraído ou OCR.
+7. Ao responder, cite sempre o número SEI, o título e o caminho relativo do documento usado. Quando a resposta depender de andamento processual, cite também a data e a descrição do item de \`historico[]\`.
 
 ## Comandos úteis
 
@@ -130,6 +132,7 @@ Esta pasta é uma fotografia local completa do processo SEI ${processo.numero_pr
 ${comandos.join("\n")}
 jq '.documentos[] | {numero_sei, titulo, tipo_documento, criado_em, modificado_em, caminho_relativo}' processo.json
 jq '.historico[] | select(.descricao | test("Gerado documento|Registro de documento"; "i"))' processo.json
+jq '.ultima_movimentacao' processo.json
 rg -n "termo de busca" ${processo.artefatos.diretorio_documentos}
 \`\`\`
 
