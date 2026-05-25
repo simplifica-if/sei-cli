@@ -199,6 +199,22 @@ async function abrirCopiaPaginaProcesso(page: Page) {
   return aba;
 }
 
+async function lerTextoSelecionado(locator: Locator) {
+  const valor = await locator.evaluate((elemento) => {
+    if (!(elemento instanceof HTMLSelectElement)) {
+      return "";
+    }
+    return elemento.selectedOptions[0]?.textContent?.trim() ?? "";
+  });
+  return valor || undefined;
+}
+
+async function lerTextoCampo(locator: Locator) {
+  const valor = await locator.inputValue().catch(() => "");
+  const texto = valor.trim();
+  return texto || undefined;
+}
+
 async function localizarProximaPaginaHistorico(frame: Frame) {
   const tentativas = [
     frame.locator('a[title*="Próxima Página" i]'),
@@ -654,16 +670,20 @@ async function coletarMetadadosProcesso(page: Page): Promise<MetadadosProcessoSe
     const url = await resolverUrlAcao(acao, aba, "Ação de consulta do processo sem URL.");
     await aba.goto(url, { waitUntil: "domcontentloaded" });
     await aba.waitForTimeout(500);
-    const texto = await aba.locator("body").innerText().catch(() => "");
-    const tipo =
-      texto.match(/Tipo do Processo\s*:?\s*([^\n\r]+)/i)?.[1]?.trim() ??
-      (await aba.locator('select[name*="Tipo"], #selTipoProcedimento option:checked').innerText().catch(() => undefined));
-    const especificacao =
-      texto.match(/Especificação\s*:?\s*([^\n\r]+)/i)?.[1]?.trim() ??
-      (await aba.locator('input[name*="Especificacao"], #txtDescricao').inputValue().catch(() => undefined));
+    const campoTipoProcesso = await localizarPrimeiroLocatorNaPagina(aba, [
+      () => aba.getByRole("combobox", { name: /tipo do processo/i }),
+      () => aba.locator('select[id*="tipo" i]'),
+      () => aba.locator('select[name*="tipo" i]'),
+    ]);
+    const campoEspecificacao = await localizarPrimeiroLocatorNaPagina(aba, [
+      () => aba.getByRole("textbox", { name: /especifica/i }),
+      () => aba.locator('input[id*="especific" i]'),
+      () => aba.locator('input[name*="especific" i]'),
+    ]);
+
     return {
-      tipo_processo: tipo || undefined,
-      especificacao: especificacao || undefined,
+      tipo_processo: campoTipoProcesso ? await lerTextoSelecionado(campoTipoProcesso) : undefined,
+      especificacao: campoEspecificacao ? await lerTextoCampo(campoEspecificacao) : undefined,
     };
   } finally {
     await aba.close().catch(() => {});
