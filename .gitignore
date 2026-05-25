@@ -1,0 +1,5 @@
+node_modules/
+dados/
+tmp/
+*.tsbuildinfo
+.env.local
