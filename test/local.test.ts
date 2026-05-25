@@ -44,6 +44,7 @@ describe("extração local", () => {
     expect(resultado.processo.origem).toBe("diretorio-local");
     expect(resultado.processo.documentos).toHaveLength(1);
     expect(resultado.processo.documentos[0]?.numero_sei).toBe("1234567");
+    expect(resultado.processo.documentos[0]?.assinantes_html).toEqual(["Maria Silva"]);
     expect(resultado.processo.documentos[0]?.caminho_relativo).toBe(
       "documentos/[1]-1234567 despacho.html",
     );
@@ -56,6 +57,7 @@ describe("extração local", () => {
     expect(instrucoesAgente).toContain("documentos[].caminho_relativo");
     expect(instrucoesAgente).toContain("documentos[].unidade_sei");
     expect(instrucoesAgente).toContain("documentos[].caminho_hierarquico");
+    expect(instrucoesAgente).toContain("documentos[].assinantes_html");
     expect(instrucoesAgente).toContain("ultima_movimentacao");
     expect(instrucoesAgente).toContain("histórico completo");
 

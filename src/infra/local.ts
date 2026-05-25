@@ -2,7 +2,10 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { lookup as lookupMime } from "mime-types";
 import type { DocumentoProcesso, EventoExtracao, OrigemExtracao, ProcessoExtraido } from "../tipos";
-import { resolverMetadadosDocumentoSei } from "../dominio/autoriaDocumentalSei";
+import {
+  extrairNomesAssinaturaHtmlSei,
+  resolverMetadadosDocumentoSei,
+} from "../dominio/autoriaDocumentalSei";
 import { extrairNumeroSeiDoNomeArquivo, inferirTipoDocumento } from "../dominio/documentos";
 import { obterUltimaMovimentacao } from "../dominio/historico";
 import { agoraIso } from "../dominio/tempo";
@@ -48,6 +51,7 @@ async function montarDocumento(args: {
     mimeType,
   });
   const metadados = resolverMetadadosDocumentoSei({ conteudoHtml });
+  const assinantesHtml = conteudoHtml ? extrairNomesAssinaturaHtmlSei(conteudoHtml) : [];
 
   return {
     numero_sei: extrairNumeroSeiDoNomeArquivo(nomeArquivo),
@@ -65,6 +69,7 @@ async function montarDocumento(args: {
     criado_em: metadados.criado_em,
     criado_por: metadados.criado_por,
     modificado_em: metadados.modificado_em,
+    assinantes_html: assinantesHtml.length ? assinantesHtml : undefined,
     resumo_textual: relativoDocumentos,
     caminho_relativo: caminhoRelativoAoRun(args.diretorioExecucao, args.caminhoArquivo),
   };

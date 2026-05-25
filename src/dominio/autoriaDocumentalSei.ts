@@ -182,6 +182,47 @@ export function extrairAssinaturasHtmlSei(html: string) {
   return [...porData.values()].sort((a, b) => a.assinado_em.localeCompare(b.assinado_em));
 }
 
+export function extrairNomesAssinaturaHtmlSei(html: string) {
+  if (!html.trim()) {
+    return [];
+  }
+
+  const texto = extrairTextoPlanoHtml(html, {
+    preservarQuebrasBloco: true,
+    removerComentarios: true,
+    removerElementosOcultos: true,
+    removerHead: true,
+    removerImagens: true,
+    removerSvg: true,
+  });
+
+  const linhas = texto
+    .split("\n")
+    .map((linha) => linha.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const nomes = new Set<string>();
+  const padroes = [
+    /Documento assinado eletronicamente por\s+([^,]+?),\s+[^,]+?,\s+em\b/gi,
+    /Documento assinado eletronicamente por\s+([^,.]+?)(?:[.,]|$)/gi,
+  ] as const;
+
+  for (const linha of linhas) {
+    for (const padrao of padroes) {
+      let correspondencia: RegExpExecArray | null;
+      while ((correspondencia = padrao.exec(linha)) !== null) {
+        const nome = normalizarNomeAssinatura(correspondencia[1] ?? "");
+        if (nomeAssinaturaEhValido(nome)) {
+          nomes.add(nome);
+        }
+      }
+      padrao.lastIndex = 0;
+    }
+  }
+
+  return [...nomes].sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
 export function resolverMetadadosDocumentoSei(args: {
   conteudoHtml?: string;
   metadadosHistorico?: MetadadosDocumentoSei;
@@ -214,4 +255,3 @@ export function resolverMetadadosDocumentoSei(args: {
     origem_criado_em: "indefinida",
   };
 }
-

@@ -114,6 +114,7 @@ Esta pasta é uma fotografia local completa do processo SEI ${processo.numero_pr
 - Os documentos originais ou extraídos ficam em \`${processo.artefatos.diretorio_documentos}\`.
 - Caminhos em \`processo.json\`, como \`documentos[].caminho_relativo\`, são relativos a esta pasta.
 - Quando disponíveis, \`documentos[].unidade_sei\` e \`documentos[].caminho_hierarquico\` vêm da árvore do processo no SEI e ajudam a entender a posição do documento no processo.
+- Quando disponíveis, \`documentos[].assinantes_html\` lista nomes extraídos das assinaturas eletrônicas de documentos HTML.
 - \`processo.zip\`, quando existir, é o arquivo bruto preservado da origem.
 - \`logs/execucao.log\` registra eventos da extração.
 
@@ -121,18 +122,19 @@ Esta pasta é uma fotografia local completa do processo SEI ${processo.numero_pr
 
 1. Leia \`processo.json\` antes de abrir documentos soltos.
 2. Consulte \`ultima_movimentacao\` e \`historico\` para entender a movimentação administrativa do processo. No fluxo \`extrair\`, o CLI tenta capturar o histórico completo, incluindo páginas seguintes quando o SEI pagina a tela "Lista de Andamentos".
-3. Use \`documentos[].numero_sei\`, \`titulo\`, \`tipo_documento\`, \`criado_em\`, \`modificado_em\` e \`caminho_relativo\` para escolher arquivos relevantes.
-4. Use \`unidade_sei\` e \`caminho_hierarquico\` para priorizar documentos por setor, pasta ou agrupamento da árvore.
-5. Para relacionar documentos ao histórico, procure o \`numero_sei\` nas descrições de \`historico[]\`, como "Gerado documento público" ou "Registro de documento externo".
-6. Para HTML e textos simples, pesquise em \`${processo.artefatos.diretorio_documentos}\` com \`rg\`.
-7. Para PDFs, use uma ferramenta própria de leitura de PDF; este snapshot preserva PDFs, mas não garante texto extraído ou OCR.
-8. Ao responder, cite sempre o número SEI, o título e o caminho relativo do documento usado. Quando a resposta depender de andamento processual, cite também a data e a descrição do item de \`historico[]\`.
+3. Use \`documentos[].numero_sei\`, \`titulo\`, \`tipo_documento\`, \`criado_em\`, \`modificado_em\`, \`assinantes_html\` e \`caminho_relativo\` para escolher arquivos relevantes.
+4. Use \`assinantes_html\` como metadado auxiliar para identificar quem assinou documentos HTML; confirme no conteúdo do documento quando a autoria for decisiva.
+5. Use \`unidade_sei\` e \`caminho_hierarquico\` para priorizar documentos por setor, pasta ou agrupamento da árvore.
+6. Para relacionar documentos ao histórico, procure o \`numero_sei\` nas descrições de \`historico[]\`, como "Gerado documento público" ou "Registro de documento externo".
+7. Para HTML e textos simples, pesquise em \`${processo.artefatos.diretorio_documentos}\` com \`rg\`.
+8. Para PDFs, use uma ferramenta própria de leitura de PDF; este snapshot preserva PDFs, mas não garante texto extraído ou OCR.
+9. Ao responder, cite sempre o número SEI, o título e o caminho relativo do documento usado. Quando a resposta depender de andamento processual, cite também a data e a descrição do item de \`historico[]\`.
 
 ## Comandos úteis
 
 \`\`\`bash
 ${comandos.join("\n")}
-jq '.documentos[] | {numero_sei, titulo, unidade_sei, caminho_hierarquico, tipo_documento, criado_em, modificado_em, caminho_relativo}' processo.json
+jq '.documentos[] | {numero_sei, titulo, unidade_sei, caminho_hierarquico, assinantes_html, tipo_documento, criado_em, modificado_em, caminho_relativo}' processo.json
 jq '.historico[] | select(.descricao | test("Gerado documento|Registro de documento"; "i"))' processo.json
 jq '.ultima_movimentacao' processo.json
 rg -n "termo de busca" ${processo.artefatos.diretorio_documentos}

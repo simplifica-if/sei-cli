@@ -22,6 +22,7 @@ export interface DocumentoProcesso {
   criado_em?: string;
   criado_por?: string;
   modificado_em?: string;
+  assinantes_html?: string[];
   resumo_textual?: string;
   unidade_sei?: string;
   caminho_hierarquico?: string[];
