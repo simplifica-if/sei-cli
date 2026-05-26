@@ -42,6 +42,8 @@ export interface ProcessoExtraido {
   extraido_em: string;
   origem: OrigemExtracao;
   sei_base_url?: string;
+  sei_id_procedimento?: string;
+  sei_link_processo?: string;
   tipo_processo?: string;
   especificacao?: string;
   ultima_movimentacao?: HistoricoProcessoItem;

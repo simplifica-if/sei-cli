@@ -16,6 +16,7 @@ import {
 import { agoraIso } from "../dominio/tempo";
 import { textoCompacto, validarNumeroProcessoSei } from "../dominio/texto";
 import { extrairHistoricoDasLinhasHistoricoSei } from "../dominio/historico";
+import { extrairIdProcedimentoSei, montarLinkProcessoSei } from "../dominio/links";
 import {
   caminhoRelativoAoRun,
   escreverProcessoJson,
@@ -244,6 +245,67 @@ async function coletarPaginaHistorico(frame: Frame) {
       resumo: texto.match(/Lista de Andamentos \([^)]*\)/i)?.[0] ?? null,
     };
   });
+}
+
+async function coletarIdProcedimentoProcesso(page: Page) {
+  const urls = [
+    page.url(),
+    ...page.frames().map((frame) => frame.url()),
+  ];
+
+  for (const url of urls) {
+    try {
+      const idProcedimento = extrairIdProcedimentoSei(url);
+      if (idProcedimento) {
+        return idProcedimento;
+      }
+    } catch {
+      // Ignora URLs internas incompletas ou especiais do navegador.
+    }
+  }
+
+  for (const frame of localizarFramesRelevantes(page)) {
+    const hrefs = await frame
+      .locator(
+        'a[href*="id_procedimento"], a[href*="id_protocolo"], form[action*="id_procedimento"], form[action*="id_protocolo"]',
+      )
+      .evaluateAll((elementos) =>
+        elementos
+          .map((elemento) => elemento.getAttribute("href") ?? elemento.getAttribute("action") ?? "")
+          .filter(Boolean),
+      )
+      .catch(() => []);
+
+    for (const href of hrefs) {
+      try {
+        const idProcedimento = extrairIdProcedimentoSei(new URL(href, frame.url()).toString());
+        if (idProcedimento) {
+          return idProcedimento;
+        }
+      } catch {
+        // Ignora links relativos que não formem uma URL válida.
+      }
+    }
+  }
+
+  return undefined;
+}
+
+async function paginaProcessoContemNumero(page: Page, numeroProcesso: string) {
+  const frameArvore = page.frames().find((frame) => frame.name() === "ifrArvore");
+  const textoArvore = await frameArvore?.locator("body").innerText().catch(() => "");
+  const numeroRaiz = textoArvore?.match(/\d{5}\.\d{6}\/\d{4}-\d{2}/)?.[0];
+  if (numeroRaiz) {
+    return numeroRaiz === numeroProcesso;
+  }
+
+  for (const frame of localizarFramesRelevantes(page)) {
+    const texto = await frame.locator("body").innerText().catch(() => "");
+    if (texto.includes(numeroProcesso)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function expandirArvoreCompleta(frameArvore: Pick<Frame, "evaluate">) {
@@ -529,6 +591,23 @@ export async function extrairProcessoSei(args: {
     ]);
     await page.waitForTimeout(2_000);
 
+    if (!(await paginaProcessoContemNumero(page, numeroProcesso))) {
+      throw new Error(
+        `A pesquisa rápida do SEI não abriu uma página que contenha o processo ${numeroProcesso}.`,
+      );
+    }
+
+    const idProcedimento = await coletarIdProcedimentoProcesso(page);
+    if (idProcedimento) {
+      await registrar("link", `Identificador interno do processo no SEI capturado: ${idProcedimento}.`);
+    } else {
+      await registrar(
+        "link",
+        "Identificador interno do processo no SEI não localizado; Link SEI não será gravado no snapshot.",
+        "aviso",
+      );
+    }
+
     const botaoZip = await localizarPrimeiroLocator(page, [
       (frame) => frame.getByRole("link", { name: /zip/i }),
       (frame) => frame.getByRole("button", { name: /zip/i }),
@@ -613,6 +692,10 @@ export async function extrairProcessoSei(args: {
       eventos,
     });
     processo.sei_base_url = baseUrl;
+    processo.sei_id_procedimento = idProcedimento;
+    processo.sei_link_processo = idProcedimento
+      ? montarLinkProcessoSei(baseUrl, idProcedimento)
+      : undefined;
     processo.tipo_processo = metadados.tipo_processo;
     processo.especificacao = metadados.especificacao;
     processo.historico = historico;
@@ -647,6 +730,106 @@ export async function extrairProcessoSei(args: {
       () => {},
     );
     throw error;
+  } finally {
+    await context.close().catch(() => {});
+    await browser.close().catch(() => {});
+  }
+}
+
+export async function localizarLinkProcessoSei(args: { numeroProcesso: string }) {
+  const numeroProcesso = validarNumeroProcessoSei(args.numeroProcesso);
+  const baseUrl = process.env.SEI_BASE_URL?.trim() || "https://sei.ifpr.edu.br";
+  const headless = lerBooleano(process.env.SEI_HEADLESS, true);
+  const seletorPesquisa = "#txtPesquisaRapida";
+
+  const browser = await chromium.launch({ headless });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  try {
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+
+    const sessaoAtiva = async () => {
+      for (const frame of localizarFramesRelevantes(page)) {
+        if ((await frame.locator(seletorPesquisa).count().catch(() => 0)) > 0) {
+          return true;
+        }
+      }
+      return page.frames().some((frame) => ["ifrArvore", "ifrVisualizacao"].includes(frame.name()));
+    };
+
+    if (!(await sessaoAtiva())) {
+      const credenciais = lerCredenciaisSei();
+      const campoUsuario = await localizarPrimeiroLocatorNaPagina(page, [
+        () => page.locator("#txtUsuario"),
+        () => page.locator('input[name="txtUsuario"]'),
+        () => page.locator('input[id*="usuario" i]'),
+        () => page.getByLabel(/usuário|usuario/i),
+      ]);
+      const campoSenha = await localizarPrimeiroLocatorNaPagina(page, [
+        () => page.locator("#pwdSenha"),
+        () => page.locator("#txtSenha"),
+        () => page.locator('input[type="password"]'),
+        () => page.locator('input[id*="senha" i]'),
+        () => page.getByLabel(/senha/i),
+      ]);
+      const botaoAcesso = await localizarPrimeiroLocatorNaPagina(page, [
+        () => page.getByRole("button", { name: /acessar/i }),
+        () => page.locator('input[type="submit"]'),
+        () => page.locator('button[id*="acess" i]'),
+      ]);
+
+      if (!campoUsuario || !campoSenha || !botaoAcesso) {
+        throw new Error("Campos de login do SEI não localizados.");
+      }
+
+      await preencherCampo(campoUsuario, credenciais.usuario);
+      await preencherCampo(campoSenha, credenciais.senha);
+      await botaoAcesso.click();
+
+      const prazo = Date.now() + 12_000;
+      while (Date.now() < prazo && !(await sessaoAtiva())) {
+        await page.waitForLoadState("domcontentloaded", { timeout: 1_000 }).catch(() => {});
+        await page.waitForTimeout(250);
+      }
+
+      if (!(await sessaoAtiva())) {
+        throw new Error("Falha ao autenticar no SEI. Verifique credenciais, 2FA ou sessão bloqueada.");
+      }
+    }
+
+    const campoPesquisa = await localizarPrimeiroLocator(page, [
+      (frame) => frame.locator(seletorPesquisa),
+    ]);
+    if (!campoPesquisa) {
+      throw new Error("Campo de pesquisa rápida do SEI não localizado.");
+    }
+
+    await campoPesquisa.fill("");
+    await campoPesquisa.fill(numeroProcesso);
+    await Promise.all([
+      page.waitForLoadState("domcontentloaded").catch(() => undefined),
+      campoPesquisa.press("Enter"),
+    ]);
+    await page.waitForTimeout(2_000);
+
+    if (!(await paginaProcessoContemNumero(page, numeroProcesso))) {
+      throw new Error(
+        `A pesquisa rápida do SEI não abriu uma página que contenha o processo ${numeroProcesso}.`,
+      );
+    }
+
+    const idProcedimento = await coletarIdProcedimentoProcesso(page);
+    if (!idProcedimento) {
+      throw new Error("Identificador interno do processo no SEI não localizado.");
+    }
+
+    return {
+      numero_processo: numeroProcesso,
+      sei_base_url: baseUrl,
+      sei_id_procedimento: idProcedimento,
+      sei_link_processo: montarLinkProcessoSei(baseUrl, idProcedimento),
+    };
   } finally {
     await context.close().catch(() => {});
     await browser.close().catch(() => {});

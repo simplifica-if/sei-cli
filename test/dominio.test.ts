@@ -12,6 +12,7 @@ import {
   formatarResumoPaginacaoHistoricoSei,
   obterUltimaMovimentacao,
 } from "../src/dominio/historico";
+import { extrairIdProcedimentoSei, montarLinkProcessoSei } from "../src/dominio/links";
 
 describe("domínio SEI", () => {
   test("extrai histórico de linhas copiadas do SEI", () => {
@@ -82,5 +83,12 @@ describe("domínio SEI", () => {
     `);
 
     expect(nomes).toEqual(["João de Souza", "Maria Silva"]);
+  });
+
+  test("monta link estável para processo SEI", () => {
+    expect(extrairIdProcedimentoSei("https://sei.ifpr.edu.br/sei/controlador.php?acao=procedimento_trabalhar&id_protocolo=1237868&infra_hash=abc")).toBe("1237868");
+    expect(montarLinkProcessoSei("https://sei.ifpr.edu.br/", "1237868")).toBe(
+      "https://sei.ifpr.edu.br/sei/controlador.php?acao=procedimento_trabalhar&id_procedimento=1237868",
+    );
   });
 });
