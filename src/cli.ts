@@ -3,7 +3,7 @@ import path from "node:path";
 import { formatarDataHoraParaHumano } from "./dominio/tempo";
 import { carregarEnvLocal } from "./infra/env";
 import { lerDiretorioProcesso, lerZipProcesso } from "./infra/local";
-import { extrairProcessoSei } from "./infra/playwrightSei";
+import { extrairProcessoSei, localizarLinkProcessoSei } from "./infra/playwrightSei";
 import {
   carregarProcessoParaInspecao,
   inspecionarUltimaAtualizacao,
@@ -88,6 +88,7 @@ function imprimirAjuda() {
   sei inspecionar ultima-atualizacao <runDir> [--json]
   sei inspecionar documentos <runDir> [--ultimos 5] [--json]
   sei inspecionar historico <runDir> [--ultimos 10] [--json]
+  sei localizar link <numero> [--json]
 
 Variáveis para extrair do SEI:
   SEI_USUARIO
@@ -116,6 +117,21 @@ async function executar(args: string[]) {
       saida: opcoes.saida,
     });
     opcoes.json ? imprimirJson(resultado) : imprimirResumoExtracao(resultado);
+    return;
+  }
+
+  if (comando === "localizar") {
+    if (alvo !== "link" || !valor) {
+      throw new Error("Uso esperado: sei localizar link <numero>.");
+    }
+    const resultado = await localizarLinkProcessoSei({ numeroProcesso: valor });
+    if (opcoes.json) {
+      imprimirJson(resultado);
+      return;
+    }
+    console.log(`Processo ${resultado.numero_processo}`);
+    console.log(`ID procedimento: ${resultado.sei_id_procedimento}`);
+    console.log(`Link SEI: ${resultado.sei_link_processo}`);
     return;
   }
 
