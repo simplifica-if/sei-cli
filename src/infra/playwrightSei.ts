@@ -608,6 +608,7 @@ export async function extrairProcessoSei(args: {
       );
     }
 
+    let zipOriginalRelativo: string | undefined;
     const botaoZip = await localizarPrimeiroLocator(page, [
       (frame) => frame.getByRole("link", { name: /zip/i }),
       (frame) => frame.getByRole("button", { name: /zip/i }),
@@ -616,37 +617,54 @@ export async function extrairProcessoSei(args: {
       (frame) => frame.getByText(/^ZIP$/i),
     ]);
     if (!botaoZip) {
-      throw new Error("Botão ou link de geração de ZIP não localizado no SEI.");
-    }
+      await registrar(
+        "download",
+        "Botão ou link de geração de ZIP não localizado no SEI; snapshot seguirá apenas com metadados e histórico.",
+        "aviso",
+      );
+    } else {
+      await registrar("download", "Solicitando ZIP completo do processo.");
+      const primeiroDownload = page.waitForEvent("download", { timeout: 120_000 }).catch(() => null);
+      await botaoZip.click();
+      let download = await Promise.race([primeiroDownload, esperar(3_000)]);
 
-    await registrar("download", "Solicitando ZIP completo do processo.");
-    const primeiroDownload = page.waitForEvent("download", { timeout: 120_000 }).catch(() => null);
-    await botaoZip.click();
-    let download = await Promise.race([primeiroDownload, esperar(3_000)]);
+      if (!download) {
+        const gerarZip = await localizarPrimeiroLocator(page, [
+          (frame) => frame.getByRole("button", { name: /gerar/i }),
+          (frame) => frame.getByRole("link", { name: /gerar/i }),
+          (frame) => frame.getByRole("button", { name: /confirmar|ok/i }),
+          (frame) => frame.getByText(/gerar arquivo zip do processo/i),
+        ]);
+        if (gerarZip) {
+          const downloadPromise = page.waitForEvent("download", { timeout: 120_000 }).catch(() => null);
+          await gerarZip.click();
+          download = await downloadPromise;
+        } else {
+          download = await primeiroDownload;
+        }
+      }
 
-    if (!download) {
-      const gerarZip = await localizarPrimeiroLocator(page, [
-        (frame) => frame.getByRole("button", { name: /gerar/i }),
-        (frame) => frame.getByRole("link", { name: /gerar/i }),
-        (frame) => frame.getByRole("button", { name: /confirmar|ok/i }),
-        (frame) => frame.getByText(/gerar arquivo zip do processo/i),
-      ]);
-      if (gerarZip) {
-        const downloadPromise = page.waitForEvent("download", { timeout: 120_000 });
-        await gerarZip.click();
-        download = await downloadPromise;
+      if (download) {
+        try {
+          await download.saveAs(paths.caminhoZipOriginal);
+          await registrar("download", `ZIP salvo em ${paths.caminhoZipOriginal}.`);
+          await extrairZipParaDiretorio(paths.caminhoZipOriginal, paths.diretorioDocumentos);
+          zipOriginalRelativo = caminhoRelativoAoRun(paths.diretorioExecucao, paths.caminhoZipOriginal);
+        } catch (error) {
+          await registrar(
+            "download",
+            `Não foi possível salvar ou extrair o ZIP do processo; snapshot seguirá apenas com metadados e histórico: ${error instanceof Error ? error.message : String(error)}`,
+            "aviso",
+          );
+        }
       } else {
-        download = await primeiroDownload;
+        await registrar(
+          "download",
+          "O SEI não iniciou o download do ZIP dentro do tempo esperado; snapshot seguirá apenas com metadados e histórico.",
+          "aviso",
+        );
       }
     }
-
-    if (!download) {
-      throw new Error("O SEI não iniciou o download do ZIP dentro do tempo esperado.");
-    }
-
-    await download.saveAs(paths.caminhoZipOriginal);
-    await registrar("download", `ZIP salvo em ${paths.caminhoZipOriginal}.`);
-    await extrairZipParaDiretorio(paths.caminhoZipOriginal, paths.diretorioDocumentos);
 
     const mapaDocumentosArvore = await extrairMapaDocumentosArvoreSei(page).catch(async (error) => {
       await registrar(
@@ -688,7 +706,7 @@ export async function extrairProcessoSei(args: {
       origem: "playwright-sei",
       diretorioExecucao: paths.diretorioExecucao,
       diretorioDocumentos: paths.diretorioDocumentos,
-      zipOriginalRelativo: caminhoRelativoAoRun(paths.diretorioExecucao, paths.caminhoZipOriginal),
+      zipOriginalRelativo,
       eventos,
     });
     processo.sei_base_url = baseUrl;
