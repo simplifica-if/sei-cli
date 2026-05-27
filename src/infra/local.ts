@@ -84,9 +84,6 @@ async function montarProcessoDeDiretorio(args: {
   eventos: EventoExtracao[];
 }) {
   const arquivos = (await listarArquivosRecursivos(args.diretorioDocumentos)).sort();
-  if (!arquivos.length) {
-    throw new Error("Nenhum documento foi encontrado para montar o processo.");
-  }
 
   const documentos = await Promise.all(
     arquivos.map((arquivo, indice) =>
