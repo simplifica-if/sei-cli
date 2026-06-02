@@ -298,13 +298,6 @@ async function paginaProcessoContemNumero(page: Page, numeroProcesso: string) {
   if (numeroRaiz) {
     return numeroRaiz === numeroProcesso;
   }
-
-  for (const frame of localizarFramesRelevantes(page)) {
-    const texto = await frame.locator("body").innerText().catch(() => "");
-    if (texto.includes(numeroProcesso)) {
-      return true;
-    }
-  }
   return false;
 }
 
