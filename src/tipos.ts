@@ -63,3 +63,15 @@ export interface ResultadoExtracao {
   diretorio_execucao: string;
   caminho_processo_json: string;
 }
+
+export interface ResultadoVerificacaoAtualizacao {
+  numero_processo: string;
+  atualizado: boolean;
+  precisa_extrair: boolean;
+  motivo: string;
+  snapshot?: string;
+  historico_local_total: number;
+  historico_remoto_total: number;
+  ultima_movimentacao_local?: HistoricoProcessoItem;
+  ultima_movimentacao_remota?: HistoricoProcessoItem;
+}

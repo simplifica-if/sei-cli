@@ -40,6 +40,7 @@ describe("CLI", () => {
 
     expect(resultado.code).toBe(0);
     expect(resultado.stdout).toContain("sei extrair processo");
+    expect(resultado.stdout).toContain("sei verificar atualizacao processo");
     expect(resultado.stdout).toContain("Variáveis para extrair do SEI");
   });
 
@@ -48,6 +49,13 @@ describe("CLI", () => {
 
     expect(resultado.code).toBe(1);
     expect(resultado.stderr).toContain("Informe --zip");
+  });
+
+  test("falha quando verificação de atualização não recebe snapshot", async () => {
+    const resultado = await rodarCli(["verificar", "atualizacao", "processo", "00000.000000/0000-00"]);
+
+    expect(resultado.code).toBe(1);
+    expect(resultado.stderr).toContain("Informe --snapshot");
   });
 
   test("executa leitura local com saída JSON", async () => {
@@ -78,4 +86,3 @@ describe("CLI", () => {
     expect(json.processo.documentos[0].numero_sei).toBe("1234567");
   });
 });
-

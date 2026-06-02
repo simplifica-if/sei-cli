@@ -11,6 +11,7 @@ bun run sei ler processo 00000.000000/0000-00 --diretorio documentos/
 bun run sei inspecionar ultima-atualizacao dados/sei/00000.000000_0000-00/<execucao>
 bun run sei inspecionar documentos dados/sei/00000.000000_0000-00/<execucao> --ultimos 5
 bun run sei inspecionar historico dados/sei/00000.000000_0000-00/<execucao> --ultimos 10
+bun run sei verificar atualizacao processo 00000.000000/0000-00 --snapshot dados/sei/00000.000000_0000-00/<execucao>
 ```
 
 Por padrão, os comandos imprimem um resumo humano em português. Use `--json` para saída estruturada.
@@ -36,11 +37,35 @@ Comandos úteis para começar:
 bun run inspecionar ultima-atualizacao <runDir> --json
 bun run inspecionar documentos <runDir> --ultimos 20 --json
 bun run inspecionar historico <runDir> --ultimos 50 --json
+bun run sei verificar atualizacao processo <numero> --snapshot <runDir> --json
+```
+
+## Verificar atualização de snapshot
+
+Use `verificar atualizacao` quando já existe uma fotografia local e você precisa saber se ela continua equivalente ao processo remoto no SEI antes de analisá-la:
+
+```bash
+bun run sei verificar atualizacao processo 00000.000000/0000-00 --snapshot dados/sei/00000.000000_0000-00/<execucao> --json
+```
+
+O comando acessa o SEI, lê o histórico remoto completo e compara com o `historico` salvo em `<runDir>/processo.json`. Ele não baixa documentos nem altera o snapshot local.
+
+A saída estruturada informa:
+
+- `atualizado`: `true` quando o histórico remoto coincide com o snapshot;
+- `precisa_extrair`: `true` quando há diferença e uma nova extração é recomendada;
+- `ultima_movimentacao_local` e `ultima_movimentacao_remota`;
+- totais de eventos de histórico local e remoto.
+
+Se `precisa_extrair` for `true`, atualize a fotografia com:
+
+```bash
+bun run sei extrair processo 00000.000000/0000-00
 ```
 
 ## Variáveis de ambiente
 
-`extrair` lê `.env.local` e o ambiente atual:
+`extrair`, `localizar` e `verificar atualizacao` leem `.env.local` e o ambiente atual:
 
 - `SEI_USUARIO`
 - `SEI_SENHA`

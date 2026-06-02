@@ -3,9 +3,14 @@ import path from "node:path";
 import { formatarDataHoraParaHumano } from "./dominio/tempo";
 import { carregarEnvLocal } from "./infra/env";
 import { lerDiretorioProcesso, lerZipProcesso } from "./infra/local";
-import { extrairProcessoSei, localizarLinkProcessoSei } from "./infra/playwrightSei";
+import {
+  consultarHistoricoProcessoSei,
+  extrairProcessoSei,
+  localizarLinkProcessoSei,
+} from "./infra/playwrightSei";
 import {
   carregarProcessoParaInspecao,
+  compararAtualizacaoProcesso,
   inspecionarUltimaAtualizacao,
   listarUltimosDocumentos,
   listarUltimosEventosHistorico,
@@ -17,6 +22,7 @@ interface OpcoesCli {
   saida?: string;
   zip?: string;
   diretorio?: string;
+  snapshot?: string;
   ultimos?: number;
 }
 
@@ -39,6 +45,7 @@ function lerOpcoes(args: string[]): OpcoesCli {
     saida: obterValorFlag(args, "--saida"),
     zip: obterValorFlag(args, "--zip"),
     diretorio: obterValorFlag(args, "--diretorio"),
+    snapshot: obterValorFlag(args, "--snapshot"),
     ultimos: ultimos ? Number.parseInt(ultimos, 10) : undefined,
   };
 }
@@ -88,6 +95,7 @@ function imprimirAjuda() {
   sei inspecionar ultima-atualizacao <runDir> [--json]
   sei inspecionar documentos <runDir> [--ultimos 5] [--json]
   sei inspecionar historico <runDir> [--ultimos 10] [--json]
+  sei verificar atualizacao processo <numero> --snapshot <runDir> [--json]
   sei localizar link <numero> [--json]
 
 Variáveis para extrair do SEI:
@@ -132,6 +140,50 @@ async function executar(args: string[]) {
     console.log(`Processo ${resultado.numero_processo}`);
     console.log(`ID procedimento: ${resultado.sei_id_procedimento}`);
     console.log(`Link SEI: ${resultado.sei_link_processo}`);
+    return;
+  }
+
+  if (comando === "verificar") {
+    const entidade = args[2];
+    const numero = args[3];
+    if (alvo !== "atualizacao" || entidade !== "processo" || !numero) {
+      throw new Error("Uso esperado: sei verificar atualizacao processo <numero> --snapshot <runDir>.");
+    }
+    if (!opcoes.snapshot) {
+      throw new Error("Informe --snapshot <runDir> para comparar com a fotografia local.");
+    }
+
+    const snapshot = path.resolve(opcoes.snapshot);
+    const processoLocal = await carregarProcessoParaInspecao(snapshot);
+    if (processoLocal.numero_processo !== numero) {
+      throw new Error(`O snapshot informado é do processo ${processoLocal.numero_processo}, não de ${numero}.`);
+    }
+
+    const remoto = await consultarHistoricoProcessoSei({ numeroProcesso: numero });
+    const resultado = compararAtualizacaoProcesso({
+      processoLocal,
+      historicoRemoto: remoto.historico,
+      snapshot,
+    });
+
+    if (opcoes.json) {
+      imprimirJson(resultado);
+      return;
+    }
+
+    console.log(`Processo ${resultado.numero_processo}`);
+    console.log(`Snapshot: ${resultado.snapshot}`);
+    console.log(`Atualizado: ${resultado.atualizado ? "sim" : "não"}`);
+    console.log(`Precisa extrair: ${resultado.precisa_extrair ? "sim" : "não"}`);
+    console.log(`Motivo: ${resultado.motivo}`);
+    if (resultado.ultima_movimentacao_local) {
+      console.log("Última movimentação local:");
+      imprimirEventoHistorico(resultado.ultima_movimentacao_local, 0);
+    }
+    if (resultado.ultima_movimentacao_remota) {
+      console.log("Última movimentação remota:");
+      imprimirEventoHistorico(resultado.ultima_movimentacao_remota, 0);
+    }
     return;
   }
 

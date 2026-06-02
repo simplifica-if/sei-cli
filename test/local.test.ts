@@ -6,6 +6,7 @@ import { zipSync, strToU8 } from "fflate";
 import { lerDiretorioProcesso, lerZipProcesso } from "../src/infra/local";
 import {
   carregarProcessoParaInspecao,
+  compararAtualizacaoProcesso,
   inspecionarUltimaAtualizacao,
   listarUltimosDocumentos,
 } from "../src/aplicacao/inspecionar";
@@ -88,5 +89,43 @@ describe("extração local", () => {
     await expect(readFile(path.join(saida, "AGENTS.md"), "utf-8")).resolves.toContain(
       "processo.zip",
     );
+  });
+
+  test("compara atualização entre snapshot local e histórico remoto", async () => {
+    const movimentacao = {
+      ocorrido_em: "2026-05-25T13:44:00-03:00",
+      unidade: "PROENS",
+      usuario: "1234567",
+      descricao: "Gerado documento público 1234567 (Despacho)",
+      ordem: 0,
+    };
+    const processoLocal = {
+      versao_schema: 1 as const,
+      numero_processo: "00000.000000/0000-00",
+      extraido_em: "2026-05-25T16:44:00.000Z",
+      origem: "playwright-sei" as const,
+      ultima_movimentacao: movimentacao,
+      historico: [movimentacao],
+      documentos: [],
+      eventos: [],
+      artefatos: {
+        diretorio_documentos: "documentos",
+      },
+    };
+
+    expect(
+      compararAtualizacaoProcesso({
+        processoLocal,
+        historicoRemoto: [movimentacao],
+        snapshot: "/tmp/snapshot",
+      }).atualizado,
+    ).toBe(true);
+
+    expect(
+      compararAtualizacaoProcesso({
+        processoLocal,
+        historicoRemoto: [{ ...movimentacao, descricao: "Processo recebido na unidade" }],
+      }).precisa_extrair,
+    ).toBe(true);
   });
 });
