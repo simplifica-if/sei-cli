@@ -1,24 +1,114 @@
 # sei-cli
 
-CLI em Bun para extrair e inspecionar dados de processos do SEI.
+CLI em Bun/TypeScript para extrair, ler e inspecionar fotografias locais de processos do SEI.
 
-## Comandos principais
+O projeto automatiza acesso ao SEI com Playwright, baixa ou lê documentos locais, organiza os artefatos em uma pasta de execução e produz um `processo.json` estruturado para consulta posterior por pessoas, scripts ou agentes de IA.
+
+## O que é o SEI
+
+O [Sistema Eletrônico de Informações (SEI)](https://www.gov.br/servicoscompartilhados/pt-br/assuntos/gestao-documental/sistema-eletronico-de-informacoes-sei) é uma solução oficial do Governo Federal para produção e gestão de documentos e processos administrativos eletrônicos. Foi desenvolvido pelo Tribunal Regional Federal da 4ª Região (TRF-4) e é cedido gratuitamente a instituições públicas desde 2013, com foco em eficiência administrativa.
+
+Este CLI não substitui o SEI nem altera processos: ele apenas ajuda a criar snapshots locais pesquisáveis de processos aos quais o usuário já tem acesso.
+
+## Recursos
+
+- Extrai processos diretamente do SEI usando `SEI_USUARIO` e `SEI_SENHA`.
+- Lê exportações locais a partir de um `.zip` ou de um diretório de documentos.
+- Gera uma fotografia local com documentos, logs, metadados, histórico e instruções de pesquisa.
+- Lista últimos documentos, últimos eventos de histórico e última atualização do snapshot.
+- Compara um snapshot local com o histórico remoto para indicar se uma nova extração é recomendada.
+- Imprime resumos humanos em português ou JSON estruturado com `--json`.
+
+## Requisitos
+
+- [Bun](https://bun.sh/)
+- Navegadores do Playwright instalados para comandos que acessam o SEI remoto
+
+```bash
+bun install
+bunx playwright install
+```
+
+## Configuração
+
+Os comandos que acessam o SEI remoto leem variáveis do ambiente atual e de `.env.local`:
+
+```bash
+SEI_USUARIO=seu_usuario
+SEI_SENHA=sua_senha
+SEI_BASE_URL=https://sei.ifpr.edu.br
+SEI_HEADLESS=true
+```
+
+`SEI_BASE_URL` é opcional e usa `https://sei.ifpr.edu.br` por padrão. `SEI_HEADLESS` também é opcional e usa `true` por padrão.
+
+Nunca versionar `.env.local`, snapshots do diretório `dados/`, documentos baixados, ZIPs de processo, screenshots de erro ou logs que possam conter informações internas. O `.gitignore` já cobre esses caminhos.
+
+## Uso
+
+Use um número de processo no formato `00000.000000/0000-00`.
 
 ```bash
 bun run sei extrair processo 00000.000000/0000-00
 bun run sei ler processo 00000.000000/0000-00 --zip processo.zip
 bun run sei ler processo 00000.000000/0000-00 --diretorio documentos/
-bun run sei inspecionar ultima-atualizacao dados/sei/00000.000000_0000-00/<execucao>
-bun run sei inspecionar documentos dados/sei/00000.000000_0000-00/<execucao> --ultimos 5
-bun run sei inspecionar historico dados/sei/00000.000000_0000-00/<execucao> --ultimos 10
-bun run sei verificar atualizacao processo 00000.000000/0000-00 --snapshot dados/sei/00000.000000_0000-00/<execucao>
+bun run sei localizar link 00000.000000/0000-00
 ```
 
-Por padrão, os comandos imprimem um resumo humano em português. Use `--json` para saída estruturada.
+Por padrão, cada comando imprime um resumo para leitura humana. Adicione `--json` para saída estruturada:
 
-## Para agentes de IA
+```bash
+bun run sei extrair processo 00000.000000/0000-00 --json
+```
 
-Este repositório foi pensado para gerar pastas que agentes de IA possam pesquisar depois. Cada execução cria uma fotografia local de um processo e inclui um `AGENTS.md` específico para aquele snapshot:
+Use `--saida <dir>` para escolher explicitamente a pasta de saída:
+
+```bash
+bun run sei ler processo 00000.000000/0000-00 --diretorio documentos/ --saida dados/sei/exemplo
+```
+
+## Inspecionar um snapshot
+
+Depois de uma extração, use a pasta de execução como `<runDir>`:
+
+```bash
+bun run sei inspecionar ultima-atualizacao <runDir>
+bun run sei inspecionar documentos <runDir> --ultimos 5
+bun run sei inspecionar historico <runDir> --ultimos 10
+```
+
+Todos os comandos de inspeção aceitam `--json`:
+
+```bash
+bun run sei inspecionar historico <runDir> --ultimos 50 --json
+```
+
+## Verificar atualização
+
+Use `verificar atualizacao` quando já existe uma fotografia local e você precisa saber se ela ainda corresponde ao histórico remoto do SEI:
+
+```bash
+bun run sei verificar atualizacao processo 00000.000000/0000-00 --snapshot <runDir> --json
+```
+
+O comando acessa o SEI, consulta o histórico remoto completo e compara com o `historico` salvo em `<runDir>/processo.json`. Ele não baixa documentos nem altera o snapshot local.
+
+A saída informa:
+
+- `atualizado`: `true` quando o histórico remoto coincide com o snapshot.
+- `precisa_extrair`: `true` quando há diferença e uma nova extração é recomendada.
+- `ultima_movimentacao_local` e `ultima_movimentacao_remota`.
+- totais de eventos de histórico local e remoto.
+
+Quando `precisa_extrair` for `true`, gere uma nova fotografia:
+
+```bash
+bun run sei extrair processo 00000.000000/0000-00
+```
+
+## Estrutura gerada
+
+Cada execução cria uma pasta parecida com:
 
 ```text
 dados/sei/<numero-processo>/<execucao>/
@@ -29,45 +119,29 @@ dados/sei/<numero-processo>/<execucao>/
   logs/execucao.log
 ```
 
-Em geral, use `processo.json` como índice canônico, `ultima_movimentacao` e `historico` para entender a movimentação administrativa, `documentos[].caminho_relativo` para abrir arquivos, `documentos[].assinantes_html` para nomes extraídos de assinaturas HTML, e `documentos[].unidade_sei`/`documentos[].caminho_hierarquico` para aproveitar a árvore do processo quando ela estiver disponível. Para instruções completas de pesquisa e citação, leia o `AGENTS.md` dentro da pasta de execução.
+`processo.json` é o índice canônico do snapshot. Campos úteis:
 
-Comandos úteis para começar:
+- `numero_processo`, `tipo_processo`, `especificacao` e dados de origem.
+- `ultima_movimentacao` e `historico` para movimentação administrativa.
+- `documentos[].caminho_relativo` para abrir arquivos extraídos.
+- `documentos[].assinantes_html` para nomes identificados em assinaturas HTML.
+- `documentos[].unidade_sei` e `documentos[].caminho_hierarquico` quando a árvore do processo estiver disponível.
 
-```bash
-bun run inspecionar ultima-atualizacao <runDir> --json
-bun run inspecionar documentos <runDir> --ultimos 20 --json
-bun run inspecionar historico <runDir> --ultimos 50 --json
-bun run sei verificar atualizacao processo <numero> --snapshot <runDir> --json
-```
+O `AGENTS.md` dentro da pasta de execução contém instruções específicas para pesquisar e citar aquele snapshot.
 
-## Verificar atualização de snapshot
-
-Use `verificar atualizacao` quando já existe uma fotografia local e você precisa saber se ela continua equivalente ao processo remoto no SEI antes de analisá-la:
+## Desenvolvimento
 
 ```bash
-bun run sei verificar atualizacao processo 00000.000000/0000-00 --snapshot dados/sei/00000.000000_0000-00/<execucao> --json
+bun run typecheck
+bun test
 ```
 
-O comando acessa o SEI, lê o histórico remoto completo e compara com o `historico` salvo em `<runDir>/processo.json`. Ele não baixa documentos nem altera o snapshot local.
+## Cuidados antes de publicar
 
-A saída estruturada informa:
+Antes de abrir o repositório, confira:
 
-- `atualizado`: `true` quando o histórico remoto coincide com o snapshot;
-- `precisa_extrair`: `true` quando há diferença e uma nova extração é recomendada;
-- `ultima_movimentacao_local` e `ultima_movimentacao_remota`;
-- totais de eventos de histórico local e remoto.
-
-Se `precisa_extrair` for `true`, atualize a fotografia com:
-
-```bash
-bun run sei extrair processo 00000.000000/0000-00
-```
-
-## Variáveis de ambiente
-
-`extrair`, `localizar` e `verificar atualizacao` leem `.env.local` e o ambiente atual:
-
-- `SEI_USUARIO`
-- `SEI_SENHA`
-- `SEI_BASE_URL` opcional, padrão `https://sei.ifpr.edu.br`
-- `SEI_HEADLESS` opcional, padrão `true`
+- `git status --short` não mostra arquivos inesperados.
+- `.env.local` existe apenas localmente e não está rastreado.
+- `dados/`, `tmp/`, ZIPs, PDFs, documentos exportados e logs não estão rastreados.
+- O histórico Git não contém credenciais, tokens, chaves privadas ou documentos reais.
+- Exemplos públicos usam placeholders, não números de processos sensíveis.
