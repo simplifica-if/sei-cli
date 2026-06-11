@@ -129,6 +129,23 @@ dados/sei/<numero-processo>/<execucao>/
 
 O `AGENTS.md` dentro da pasta de execução contém instruções específicas para pesquisar e citar aquele snapshot.
 
+## Para agentes de IA
+
+Este repositório foi pensado para produzir pastas que agentes de IA possam pesquisar depois. Cada snapshot é autocontido: ele inclui documentos, metadados, histórico, logs e um `AGENTS.md` próprio com instruções específicas para análise daquele processo.
+
+Ao trabalhar com um snapshot gerado, comece por `<runDir>/processo.json` em vez de abrir documentos soltos. Use `ultima_movimentacao` e `historico` para entender o andamento administrativo, `documentos[].caminho_relativo` para localizar arquivos, `documentos[].assinantes_html` para nomes extraídos de assinaturas HTML e `documentos[].unidade_sei`/`documentos[].caminho_hierarquico` quando a árvore do processo estiver disponível.
+
+Comandos úteis para orientar uma análise:
+
+```bash
+bun run sei inspecionar ultima-atualizacao <runDir> --json
+bun run sei inspecionar documentos <runDir> --ultimos 20 --json
+bun run sei inspecionar historico <runDir> --ultimos 50 --json
+bun run sei verificar atualizacao processo 00000.000000/0000-00 --snapshot <runDir> --json
+```
+
+Para respostas baseadas em documentos do snapshot, cite o número SEI, o título e o caminho relativo do documento. Para respostas baseadas no andamento processual, cite também a data e a descrição do item em `historico[]`.
+
 ## Desenvolvimento
 
 ```bash
