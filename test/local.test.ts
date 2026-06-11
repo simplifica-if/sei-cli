@@ -67,6 +67,34 @@ describe("extração local", () => {
     expect(inspecionarUltimaAtualizacao(processo).ultimo_documento?.numero_sei).toBe("1234567");
   });
 
+  test("recusa saída já populada para não misturar snapshots", async () => {
+    const base = await criarTempDir();
+    const entradaInicial = path.join(base, "entrada-inicial");
+    const entradaNova = path.join(base, "entrada-nova");
+    const saida = path.join(base, "saida");
+    await mkdir(entradaInicial, { recursive: true });
+    await mkdir(entradaNova, { recursive: true });
+    await writeFile(path.join(entradaInicial, "[1]-1111111 antigo.html"), "antigo", "utf-8");
+    await writeFile(path.join(entradaNova, "[1]-2222222 novo.html"), "novo", "utf-8");
+
+    await lerDiretorioProcesso({
+      numeroProcesso: "00000.000000/0000-00",
+      diretorio: entradaInicial,
+      saida,
+    });
+
+    await expect(
+      lerDiretorioProcesso({
+        numeroProcesso: "00000.000000/0000-00",
+        diretorio: entradaNova,
+        saida,
+      }),
+    ).rejects.toThrow("Diretório de saída já contém arquivos");
+
+    const processo = await carregarProcessoParaInspecao(saida);
+    expect(processo.documentos.map((documento) => documento.numero_sei)).toEqual(["1111111"]);
+  });
+
   test("lê ZIP e preserva arquivo original", async () => {
     const base = await criarTempDir();
     const zipPath = path.join(base, "processo.zip");

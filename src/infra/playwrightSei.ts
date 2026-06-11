@@ -9,13 +9,15 @@ import {
 } from "../dominio/arvoreSei";
 import { mapearMetadadosDocumentosPorHistorico } from "../dominio/autoriaDocumentalSei";
 import {
+  extrairHistoricoDasLinhasEstruturadasHistoricoSei,
+  extrairHistoricoDasLinhasHistoricoSei,
   extrairResumoPaginacaoHistoricoSei,
   formatarResumoPaginacaoHistoricoSei,
   obterUltimaMovimentacao,
+  type LinhaEstruturadaHistoricoSei,
 } from "../dominio/historico";
 import { agoraIso } from "../dominio/tempo";
 import { textoCompacto, validarNumeroProcessoSei } from "../dominio/texto";
-import { extrairHistoricoDasLinhasHistoricoSei } from "../dominio/historico";
 import { extrairIdProcedimentoSei, montarLinkProcessoSei } from "../dominio/links";
 import {
   caminhoRelativoAoRun,
@@ -235,16 +237,66 @@ async function localizarProximaPaginaHistorico(frame: Frame) {
 
 async function coletarPaginaHistorico(frame: Frame) {
   return frame.evaluate(() => {
-    const texto = document.body.innerText.replace(/\s+/g, " ").trim();
-    const linhas = Array.from(document.querySelectorAll("table tr"))
+    const normalizarTexto = (valor?: string | null) => valor?.replace(/\s+/g, " ").trim() ?? "";
+    const extrairDataHora = (valor: string) =>
+      valor.match(/^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}\b/)?.[0];
+    const texto = normalizarTexto(document.body.innerText);
+    const linhasTabela = Array.from(document.querySelectorAll("table tr"));
+    const linhas = linhasTabela
       .map((linha) => linha.textContent?.replace(/\s+/g, " ").trim() ?? "")
+      .filter(Boolean);
+    const linhasEstruturadas = linhasTabela
+      .map((linha) => {
+        const celulas = Array.from(linha.querySelectorAll("td, th"))
+          .map((celula) => normalizarTexto(celula.textContent))
+          .filter(Boolean);
+        if (!celulas.length) {
+          return null;
+        }
+
+        let dataHora = extrairDataHora(celulas[0] ?? "");
+        let inicioMetadados = 1;
+        if (
+          !dataHora &&
+          /^\d{2}\/\d{2}\/\d{4}$/.test(celulas[0] ?? "") &&
+          /^\d{2}:\d{2}$/.test(celulas[1] ?? "")
+        ) {
+          dataHora = `${celulas[0]} ${celulas[1]}`;
+          inicioMetadados = 2;
+        }
+        if (!dataHora) {
+          return null;
+        }
+
+        const metadados = celulas.slice(inicioMetadados);
+        if (metadados.length >= 3) {
+          return {
+            data_hora: dataHora,
+            unidade: metadados[0],
+            usuario: metadados[1],
+            descricao: metadados.slice(2).join(" "),
+          };
+        }
+        if (metadados.length >= 1) {
+          return {
+            data_hora: dataHora,
+            descricao: metadados.join(" "),
+          };
+        }
+        return null;
+      })
       .filter(Boolean);
 
     return {
       linhas,
+      linhas_estruturadas: linhasEstruturadas,
       resumo: texto.match(/Lista de Andamentos \([^)]*\)/i)?.[0] ?? null,
     };
-  });
+  }) as Promise<{
+    linhas: string[];
+    linhas_estruturadas: LinhaEstruturadaHistoricoSei[];
+    resumo: string | null;
+  }>;
 }
 
 async function coletarIdProcedimentoProcesso(page: Page) {
@@ -575,7 +627,12 @@ export async function extrairProcessoSei(args: {
     }
 
     await registrar("pesquisa", `Pesquisando o processo ${numeroProcesso}.`);
-    const campoPesquisa = page.locator(seletorPesquisa);
+    const campoPesquisa = await localizarPrimeiroLocator(page, [
+      (frame) => frame.locator(seletorPesquisa),
+    ]);
+    if (!campoPesquisa) {
+      throw new Error("Campo de pesquisa rápida do SEI não localizado.");
+    }
     await campoPesquisa.fill("");
     await campoPesquisa.fill(numeroProcesso);
     await Promise.all([
@@ -1011,10 +1068,12 @@ async function coletarHistoricoProcesso(page: Page) {
     }
 
     const linhas: string[] = [];
+    const linhasEstruturadas: LinhaEstruturadaHistoricoSei[] = [];
 
     while (true) {
       const paginaAtual = await coletarPaginaHistorico(frameHistorico);
       linhas.push(...paginaAtual.linhas);
+      linhasEstruturadas.push(...paginaAtual.linhas_estruturadas);
 
       const resumoPaginacao = extrairResumoPaginacaoHistoricoSei(paginaAtual.resumo ?? undefined);
       if (!resumoPaginacao || resumoPaginacao.fim >= resumoPaginacao.total_registros) {
@@ -1048,7 +1107,11 @@ async function coletarHistoricoProcesso(page: Page) {
       }
     }
 
-    const historico = extrairHistoricoDasLinhasHistoricoSei(linhas);
+    const historicoEstruturado =
+      extrairHistoricoDasLinhasEstruturadasHistoricoSei(linhasEstruturadas);
+    const historico = historicoEstruturado.length
+      ? historicoEstruturado
+      : extrairHistoricoDasLinhasHistoricoSei(linhas);
     if (!historico.length) {
       throw new Error("A tela de histórico foi aberta, mas nenhuma movimentação pôde ser interpretada.");
     }

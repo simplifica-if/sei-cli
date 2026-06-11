@@ -7,6 +7,13 @@ export interface ResumoPaginacaoHistoricoSei {
   fim: number;
 }
 
+export interface LinhaEstruturadaHistoricoSei {
+  data_hora: string;
+  unidade?: string;
+  usuario?: string;
+  descricao: string;
+}
+
 function converterDataHoraSeiParaIso(dataHora: string) {
   const partes = dataHora.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/);
   if (!partes) {
@@ -89,6 +96,28 @@ export function extrairHistoricoDasLinhasHistoricoSei(linhas: string[]): Histori
       return {
         ocorrido_em: ocorridoEm,
         descricao: (minima[2] ?? "").trim(),
+        ordem: indice,
+      } satisfies HistoricoProcessoItem;
+    })
+    .filter((item): item is HistoricoProcessoItem => item !== null);
+}
+
+export function extrairHistoricoDasLinhasEstruturadasHistoricoSei(
+  linhas: LinhaEstruturadaHistoricoSei[],
+): HistoricoProcessoItem[] {
+  return linhas
+    .map((linha, indice): HistoricoProcessoItem | null => {
+      const ocorridoEm = converterDataHoraSeiParaIso(textoCompacto(linha.data_hora));
+      const descricao = textoCompacto(linha.descricao);
+      if (!ocorridoEm || !descricao) {
+        return null;
+      }
+
+      return {
+        ocorrido_em: ocorridoEm,
+        unidade: textoCompacto(linha.unidade) || undefined,
+        usuario: textoCompacto(linha.usuario) || undefined,
+        descricao,
         ordem: indice,
       } satisfies HistoricoProcessoItem;
     })

@@ -8,10 +8,12 @@ import {
 import { extrairNumeroSeiDoNomeArquivo, inferirTipoDocumento } from "../src/dominio/documentos";
 import {
   extrairHistoricoDasLinhasHistoricoSei,
+  extrairHistoricoDasLinhasEstruturadasHistoricoSei,
   extrairResumoPaginacaoHistoricoSei,
   formatarResumoPaginacaoHistoricoSei,
   obterUltimaMovimentacao,
 } from "../src/dominio/historico";
+import { extrairTextoPlanoHtml } from "../src/dominio/html";
 import { extrairIdProcedimentoSei, montarLinkProcessoSei } from "../src/dominio/links";
 
 describe("domínio SEI", () => {
@@ -26,6 +28,22 @@ describe("domínio SEI", () => {
     expect(historico[0]?.unidade).toBe("PROENS");
     expect(extrairNumeroSeiDoEventoHistorico(historico[0]!.descricao)).toBe("1234567");
     expect(obterUltimaMovimentacao(historico)?.descricao).toContain("Gerado documento");
+  });
+
+  test("preserva usuário com espaços ao extrair histórico estruturado", () => {
+    const historico = extrairHistoricoDasLinhasEstruturadasHistoricoSei([
+      {
+        data_hora: "25/05/2026 13:44",
+        unidade: "PROENS",
+        usuario: "Maria Silva",
+        descricao: "Gerado documento público 1234567 (Despacho)",
+      },
+    ]);
+
+    expect(historico).toHaveLength(1);
+    expect(historico[0]?.usuario).toBe("Maria Silva");
+    expect(historico[0]?.descricao).toBe("Gerado documento público 1234567 (Despacho)");
+    expect(extrairNumeroSeiDoEventoHistorico(historico[0]!.descricao)).toBe("1234567");
   });
 
   test("extrai resumo de paginação do histórico do SEI", () => {
@@ -83,6 +101,13 @@ describe("domínio SEI", () => {
     `);
 
     expect(nomes).toEqual(["João de Souza", "Maria Silva"]);
+  });
+
+  test("mantém entidades HTML numéricas inválidas sem lançar erro", () => {
+    const texto = extrairTextoPlanoHtml("Antes &#999999999999; &#x110000; depois");
+
+    expect(texto).toContain("&#999999999999;");
+    expect(texto).toContain("&#x110000;");
   });
 
   test("monta link estável para processo SEI", () => {

@@ -38,6 +38,21 @@ export async function copiarDiretorioRecursivo(origem: string, destino: string) 
   );
 }
 
+async function listarEntradasDiretorioSeExistir(diretorio: string) {
+  try {
+    return await readdir(diretorio);
+  } catch (error) {
+    const codigo = (error as NodeJS.ErrnoException).code;
+    if (codigo === "ENOENT") {
+      return undefined;
+    }
+    if (codigo === "ENOTDIR") {
+      throw new Error(`Diretório de saída não é uma pasta: ${diretorio}.`);
+    }
+    throw error;
+  }
+}
+
 function caminhoZipEhSeguro(relativo: string) {
   const normalizado = path.posix.normalize(relativo.replaceAll("\\", "/"));
   return normalizado && !normalizado.startsWith("../") && normalizado !== ".." && !path.isAbsolute(normalizado);
@@ -78,6 +93,13 @@ export async function prepararDiretorioExecucao(args: {
         normalizarSegmentoDiretorio(args.numeroProcesso),
         formatarDataHoraParaArquivo(args.instante),
       );
+
+  const entradasExistentes = await listarEntradasDiretorioSeExistir(diretorioExecucao);
+  if (entradasExistentes?.length) {
+    throw new Error(
+      `Diretório de saída já contém arquivos: ${diretorioExecucao}. Informe uma pasta vazia ou remova a saída anterior antes de gerar um novo snapshot.`,
+    );
+  }
 
   await mkdir(path.join(diretorioExecucao, "documentos"), { recursive: true });
   await mkdir(path.join(diretorioExecucao, "logs"), { recursive: true });

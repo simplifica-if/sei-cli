@@ -38,11 +38,25 @@ export interface OpcoesTextoPlanoHtml {
   removerSvg?: boolean;
 }
 
+function decodificarPontoCodigoHtml(match: string, pontoCodigo: number) {
+  if (!Number.isInteger(pontoCodigo) || pontoCodigo < 0 || pontoCodigo > 0x10ffff) {
+    return match;
+  }
+
+  try {
+    return String.fromCodePoint(pontoCodigo);
+  } catch {
+    return match;
+  }
+}
+
 export function decodificarEntidadesHtml(texto: string) {
   return texto
-    .replace(/&#(\d+);/g, (_, codigo) => String.fromCodePoint(Number.parseInt(codigo, 10)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, codigo) =>
-      String.fromCodePoint(Number.parseInt(codigo, 16)),
+    .replace(/&#(\d+);/g, (match, codigo) =>
+      decodificarPontoCodigoHtml(match, Number.parseInt(codigo, 10)),
+    )
+    .replace(/&#x([0-9a-f]+);/gi, (match, codigo) =>
+      decodificarPontoCodigoHtml(match, Number.parseInt(codigo, 16)),
     )
     .replace(/&([a-zA-Z]+);/g, (match, nome) => ENTIDADES_HTML_NOMEADAS[nome] ?? match);
 }
@@ -85,4 +99,3 @@ export function extrairTextoPlanoHtml(html: string, opcoes: OpcoesTextoPlanoHtml
     .replace(/\r/g, "\n")
     .replace(/\t/g, " ");
 }
-
