@@ -532,6 +532,7 @@ function aplicarMetadadosArvoreNosDocumentos(
 export async function extrairProcessoSei(args: {
   numeroProcesso: string;
   saida?: string;
+  quiet?: boolean;
 }) {
   const numeroProcesso = validarNumeroProcessoSei(args.numeroProcesso);
   const baseUrl = process.env.SEI_BASE_URL?.trim() || "https://sei.ifpr.edu.br";
@@ -546,7 +547,9 @@ export async function extrairProcessoSei(args: {
     await writeFile(paths.caminhoLog, `[${evento.criado_em}] [${nivel}] [${etapa}] ${mensagem}\n`, {
       flag: "a",
     });
-    console.error(mensagem);
+    if (!args.quiet) {
+      console.error(mensagem);
+    }
   };
 
   const browser = await chromium.launch({ headless });

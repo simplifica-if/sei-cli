@@ -89,3 +89,30 @@ export function formatarDataHoraParaHumano(valor?: string) {
   }).format(data);
 }
 
+export function formatarDataCurtaParaHumano(valor?: string) {
+  if (!valor) {
+    return "sem data";
+  }
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) {
+    return valor;
+  }
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: FUSO_HORARIO_PADRAO,
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  }).format(data);
+}
+
+export function formatarDataIsoLocal(valor?: string) {
+  if (!valor) {
+    return undefined;
+  }
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) {
+    return undefined;
+  }
+  const partes = obterPartesDataHora(data);
+  return `${partes.ano}-${partes.mes}-${partes.dia}`;
+}

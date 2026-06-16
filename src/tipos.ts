@@ -64,6 +64,36 @@ export interface ResultadoExtracao {
   caminho_processo_json: string;
 }
 
+export interface ResultadoExtracaoResumo {
+  numero_processo: string;
+  origem: OrigemExtracao;
+  extraido_em: string;
+  diretorio_execucao: string;
+  caminho_processo_json: string;
+  sei_base_url?: string;
+  sei_id_procedimento?: string;
+  sei_link_processo?: string;
+  tipo_processo?: string;
+  especificacao?: string;
+  documentos_total: number;
+  historico_total: number;
+  ultima_movimentacao?: HistoricoProcessoItem;
+}
+
+export interface ResultadoResumoMovimentacao {
+  numero_processo: string;
+  snapshot?: string;
+  caminho_processo_json?: string;
+  extraido_em: string;
+  origem: OrigemExtracao;
+  sei_link_processo?: string;
+  data_abertura_sei?: string;
+  data_ultima_mov_sei?: string;
+  ultima_movimentacao_sei_texto: string;
+  historico_usado: HistoricoProcessoItem[];
+  historico_total: number;
+}
+
 export interface ResultadoVerificacaoAtualizacao {
   numero_processo: string;
   atualizado: boolean;
@@ -74,4 +104,22 @@ export interface ResultadoVerificacaoAtualizacao {
   historico_remoto_total: number;
   ultima_movimentacao_local?: HistoricoProcessoItem;
   ultima_movimentacao_remota?: HistoricoProcessoItem;
+}
+
+export interface ResultadoAtualizacaoProcesso {
+  numero_processo: string;
+  atualizado: boolean;
+  extracao_realizada: boolean;
+  snapshot_usado?: string;
+  verificacao?: ResultadoVerificacaoAtualizacao;
+  resultado_extracao?: ResultadoExtracao | ResultadoExtracaoResumo;
+  resumo_movimentacao?: ResultadoResumoMovimentacao;
+}
+
+export interface ResultadoLoteExtracaoItem {
+  numero_processo: string;
+  ok: boolean;
+  resultado_extracao?: ResultadoExtracaoResumo;
+  resumo_movimentacao?: ResultadoResumoMovimentacao;
+  erro?: string;
 }

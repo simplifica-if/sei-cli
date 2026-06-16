@@ -30,6 +30,90 @@ async function rodarCli(args: string[]) {
   return { stdout, stderr, code };
 }
 
+async function criarSnapshotComHistorico() {
+  const base = await criarTempDir();
+  const run = path.join(base, "run");
+  await mkdir(run, { recursive: true });
+  await writeFile(
+    path.join(run, "processo.json"),
+    `${JSON.stringify(
+      {
+        versao_schema: 1,
+        numero_processo: "00000.000000/0000-00",
+        extraido_em: "2026-06-16T12:00:00.000Z",
+        origem: "diretorio-local",
+        sei_link_processo: "https://sei.example/processo",
+        historico: [
+          {
+            ocorrido_em: "2026-06-01T10:00:00-03:00",
+            unidade: "UNIDADE/A",
+            usuario: "100",
+            descricao: "Processo recebido na unidade",
+            ordem: 0,
+          },
+          {
+            ocorrido_em: "2026-05-31T09:00:00-03:00",
+            unidade: "UNIDADE/B",
+            usuario: "101",
+            descricao: "Processo remetido pela unidade anterior",
+            ordem: 1,
+          },
+          {
+            ocorrido_em: "2026-05-30T08:00:00-03:00",
+            unidade: "UNIDADE/C",
+            usuario: "102",
+            descricao: "Processo público gerado",
+            ordem: 2,
+          },
+        ],
+        ultima_movimentacao: {
+          ocorrido_em: "2026-06-01T10:00:00-03:00",
+          unidade: "UNIDADE/A",
+          usuario: "100",
+          descricao: "Processo recebido na unidade",
+          ordem: 0,
+        },
+        documentos: [],
+        eventos: [],
+        artefatos: {
+          diretorio_documentos: "documentos",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf-8",
+  );
+  return run;
+}
+
+async function criarSnapshotProcessoVazio(numeroProcesso: string) {
+  const base = await criarTempDir();
+  const run = path.join(base, "run");
+  await mkdir(run, { recursive: true });
+  await writeFile(
+    path.join(run, "processo.json"),
+    `${JSON.stringify(
+      {
+        versao_schema: 1,
+        numero_processo: numeroProcesso,
+        extraido_em: "2026-06-16T12:00:00.000Z",
+        origem: "diretorio-local",
+        historico: [],
+        documentos: [],
+        eventos: [],
+        artefatos: {
+          diretorio_documentos: "documentos",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf-8",
+  );
+  return run;
+}
+
 afterEach(async () => {
   await Promise.all(temporarios.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
@@ -40,6 +124,8 @@ describe("CLI", () => {
 
     expect(resultado.code).toBe(0);
     expect(resultado.stdout).toContain("sei extrair processo");
+    expect(resultado.stdout).toContain("sei extrair lote");
+    expect(resultado.stdout).toContain("sei resumir movimentacao");
     expect(resultado.stdout).toContain("sei verificar atualizacao processo");
     expect(resultado.stdout).toContain("Variáveis para extrair do SEI");
   });
@@ -84,5 +170,110 @@ describe("CLI", () => {
     const json = JSON.parse(resultado.stdout);
     expect(json.processo.origem).toBe("diretorio-local");
     expect(json.processo.documentos[0].numero_sei).toBe("1234567");
+  });
+
+  test("executa leitura local com saída JSON resumida", async () => {
+    const base = await criarTempDir();
+    const entrada = path.join(base, "entrada");
+    const saida = path.join(base, "run");
+    await mkdir(entrada, { recursive: true });
+    await writeFile(path.join(entrada, "[1]-1234567 despacho.html"), "conteúdo", "utf-8");
+
+    const resultado = await rodarCli([
+      "ler",
+      "processo",
+      "00000.000000/0000-00",
+      "--diretorio",
+      entrada,
+      "--saida",
+      saida,
+      "--json",
+      "--resumo",
+    ]);
+
+    expect(resultado.code).toBe(0);
+    const json = JSON.parse(resultado.stdout);
+    expect(json.numero_processo).toBe("00000.000000/0000-00");
+    expect(json.processo).toBeUndefined();
+    expect(json.documentos_total).toBe(1);
+    expect(json.caminho_processo_json).toBe(path.join(saida, "processo.json"));
+  });
+
+  test("resume movimentação de um snapshot local", async () => {
+    const run = await criarSnapshotComHistorico();
+
+    const resultado = await rodarCli(["resumir", "movimentacao", run, "--ultimos", "2", "--json"]);
+
+    expect(resultado.code).toBe(0);
+    const json = JSON.parse(resultado.stdout);
+    expect(json.numero_processo).toBe("00000.000000/0000-00");
+    expect(json.data_abertura_sei).toBe("2026-05-30");
+    expect(json.data_ultima_mov_sei).toBe("2026-06-01");
+    expect(json.historico_usado).toHaveLength(2);
+    expect(json.ultima_movimentacao_sei_texto).toContain("01/06/26: Processo recebido na unidade (UNIDADE/A)");
+  });
+
+  test("falha quando resumo recebe número e snapshot de outro processo", async () => {
+    const run = await criarSnapshotProcessoVazio("00000.000000/0000-00");
+
+    const resultado = await rodarCli([
+      "resumir",
+      "movimentacao",
+      "11111.111111/1111-11",
+      "--snapshot",
+      run,
+      "--json",
+    ]);
+
+    expect(resultado.code).toBe(1);
+    expect(resultado.stderr).toContain("O snapshot informado é do processo 00000.000000/0000-00");
+    expect(resultado.stderr).toContain("não de 11111.111111/1111-11");
+  });
+
+  test("inspeciona histórico em formato resumo", async () => {
+    const run = await criarSnapshotComHistorico();
+
+    const resultado = await rodarCli([
+      "inspecionar",
+      "historico",
+      run,
+      "--ultimos",
+      "2",
+      "--formato",
+      "resumo",
+    ]);
+
+    expect(resultado.code).toBe(0);
+    expect(resultado.stdout).toContain("01/06/26: Processo recebido na unidade (UNIDADE/A)");
+    expect(resultado.stdout).toContain("31/05/26: Processo remetido pela unidade anterior (UNIDADE/B)");
+  });
+
+  test("falha em lote sem números de processo", async () => {
+    const base = await criarTempDir();
+    const arquivo = path.join(base, "processos.txt");
+    await writeFile(arquivo, "sem processos aqui\n", "utf-8");
+
+    const resultado = await rodarCli(["extrair", "lote", arquivo, "--jsonl"]);
+
+    expect(resultado.code).toBe(1);
+    expect(resultado.stderr).toContain("Nenhum número de processo SEI encontrado");
+  });
+
+  test("falha em lote quando --saida é informado", async () => {
+    const base = await criarTempDir();
+    const arquivo = path.join(base, "processos.txt");
+    await writeFile(arquivo, "00000.000000/0000-00\n", "utf-8");
+
+    const resultado = await rodarCli([
+      "extrair",
+      "lote",
+      arquivo,
+      "--saida",
+      path.join(base, "saida"),
+      "--jsonl",
+    ]);
+
+    expect(resultado.code).toBe(1);
+    expect(resultado.stderr).toContain("Não use --saida com extração em lote");
   });
 });

@@ -2,10 +2,14 @@ import type {
   DocumentoProcesso,
   HistoricoProcessoItem,
   ProcessoExtraido,
+  ResultadoExtracao,
+  ResultadoExtracaoResumo,
+  ResultadoResumoMovimentacao,
   ResultadoVerificacaoAtualizacao,
 } from "../tipos";
 import { ordenarDocumentosPorDataDesc } from "../dominio/documentos";
 import { obterUltimaMovimentacao, ordenarHistoricoPorDataDesc } from "../dominio/historico";
+import { formatarDataCurtaParaHumano, formatarDataIsoLocal } from "../dominio/tempo";
 import { lerProcessoJson } from "../infra/arquivos";
 
 export interface ResultadoUltimaAtualizacao {
@@ -32,6 +36,56 @@ export function listarUltimosDocumentos(processo: ProcessoExtraido, quantidade: 
 
 export function listarUltimosEventosHistorico(processo: ProcessoExtraido, quantidade: number) {
   return ordenarHistoricoPorDataDesc(processo.historico).slice(0, quantidade);
+}
+
+export function formatarEventoHistoricoParaResumo(evento: HistoricoProcessoItem) {
+  const data = formatarDataCurtaParaHumano(evento.ocorrido_em);
+  const unidade = evento.unidade ? ` (${evento.unidade})` : "";
+  return `${data}: ${evento.descricao}${unidade}`;
+}
+
+export function resumirExtracao(resultado: ResultadoExtracao): ResultadoExtracaoResumo {
+  return {
+    numero_processo: resultado.processo.numero_processo,
+    origem: resultado.processo.origem,
+    extraido_em: resultado.processo.extraido_em,
+    diretorio_execucao: resultado.diretorio_execucao,
+    caminho_processo_json: resultado.caminho_processo_json,
+    sei_base_url: resultado.processo.sei_base_url,
+    sei_id_procedimento: resultado.processo.sei_id_procedimento,
+    sei_link_processo: resultado.processo.sei_link_processo,
+    tipo_processo: resultado.processo.tipo_processo,
+    especificacao: resultado.processo.especificacao,
+    documentos_total: resultado.processo.documentos.length,
+    historico_total: resultado.processo.historico.length,
+    ultima_movimentacao: resultado.processo.ultima_movimentacao ?? obterUltimaMovimentacao(resultado.processo.historico),
+  };
+}
+
+export function resumirMovimentacaoProcesso(args: {
+  processo: ProcessoExtraido;
+  quantidade: number;
+  snapshot?: string;
+  caminhoProcessoJson?: string;
+}): ResultadoResumoMovimentacao {
+  const historicoOrdenado = ordenarHistoricoPorDataDesc(args.processo.historico);
+  const historicoUsado = historicoOrdenado.slice(0, args.quantidade);
+  const primeiraMovimentacao = historicoOrdenado.at(-1);
+  const ultimaMovimentacao = historicoUsado[0];
+
+  return {
+    numero_processo: args.processo.numero_processo,
+    snapshot: args.snapshot,
+    caminho_processo_json: args.caminhoProcessoJson,
+    extraido_em: args.processo.extraido_em,
+    origem: args.processo.origem,
+    sei_link_processo: args.processo.sei_link_processo,
+    data_abertura_sei: formatarDataIsoLocal(primeiraMovimentacao?.ocorrido_em),
+    data_ultima_mov_sei: formatarDataIsoLocal(ultimaMovimentacao?.ocorrido_em),
+    ultima_movimentacao_sei_texto: historicoUsado.map(formatarEventoHistoricoParaResumo).join("\n"),
+    historico_usado: historicoUsado,
+    historico_total: args.processo.historico.length,
+  };
 }
 
 function chaveMovimentacao(item?: HistoricoProcessoItem) {

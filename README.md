@@ -17,7 +17,8 @@ Este CLI não substitui o SEI nem altera processos: ele apenas ajuda a criar sna
 - Gera uma fotografia local com documentos, logs, metadados, histórico e instruções de pesquisa.
 - Lista últimos documentos, últimos eventos de histórico e última atualização do snapshot.
 - Compara um snapshot local com o histórico remoto para indicar se uma nova extração é recomendada.
-- Imprime resumos humanos em português ou JSON estruturado com `--json`.
+- Imprime resumos humanos em português, JSON completo com `--json`, JSON resumido com `--json --resumo` e JSON Lines em lote com `--jsonl`.
+- Gera resumo operacional de movimentação com as últimas movimentações em texto pronto para reuso em sistemas como Notion.
 
 ## Requisitos
 
@@ -50,6 +51,11 @@ Use um número de processo no formato `00000.000000/0000-00`.
 
 ```bash
 bun run sei extrair processo 00000.000000/0000-00
+bun run sei extrair processo 00000.000000/0000-00 --json --resumo
+bun run sei extrair ultimas-movimentacoes 00000.000000/0000-00 --ultimos 4 --json
+bun run sei extrair lote processos.txt --ultimos 4 --jsonl
+bun run sei atualizar processo 00000.000000/0000-00 --snapshot-auto --json --resumo
+bun run sei resumir movimentacao 00000.000000/0000-00 --ultimos 4 --json
 bun run sei ler processo 00000.000000/0000-00 --zip processo.zip
 bun run sei ler processo 00000.000000/0000-00 --diretorio documentos/
 bun run sei localizar link 00000.000000/0000-00
@@ -61,11 +67,19 @@ Por padrão, cada comando imprime um resumo para leitura humana. Adicione `--jso
 bun run sei extrair processo 00000.000000/0000-00 --json
 ```
 
+Para automações, prefira `--json --resumo` quando o consumidor só precisa do caminho do snapshot, totais, link do processo e última movimentação. Isso evita imprimir o `processo.json` completo no terminal:
+
+```bash
+bun run sei extrair processo 00000.000000/0000-00 --json --resumo --quiet
+```
+
 Use `--saida <dir>` para escolher explicitamente a pasta de saída:
 
 ```bash
 bun run sei ler processo 00000.000000/0000-00 --diretorio documentos/ --saida dados/sei/exemplo
 ```
+
+Use `--quiet` para suprimir mensagens de progresso em `stderr`. Os logs do snapshot continuam sendo gravados em `logs/execucao.log`. Em modo normal, progresso e avisos são emitidos em `stderr`; JSON e JSONL ficam em `stdout`.
 
 ## Inspecionar um snapshot
 
@@ -75,13 +89,19 @@ Depois de uma extração, use a pasta de execução como `<runDir>`:
 bun run sei inspecionar ultima-atualizacao <runDir>
 bun run sei inspecionar documentos <runDir> --ultimos 5
 bun run sei inspecionar historico <runDir> --ultimos 10
+bun run sei inspecionar historico-recente <runDir> --ultimos 4
+bun run sei resumir movimentacao <runDir> --ultimos 4
 ```
 
 Todos os comandos de inspeção aceitam `--json`:
 
 ```bash
 bun run sei inspecionar historico <runDir> --ultimos 50 --json
+bun run sei inspecionar historico-recente <runDir> --ultimos 4 --json
+bun run sei resumir movimentacao <runDir> --ultimos 4 --json
 ```
+
+`historico-recente` e `resumir movimentacao` retornam também `data_abertura_sei`, `data_ultima_mov_sei`, `ultima_movimentacao_sei_texto`, `sei_link_processo` e `historico_usado`.
 
 ## Verificar atualização
 
@@ -105,6 +125,24 @@ Quando `precisa_extrair` for `true`, gere uma nova fotografia:
 ```bash
 bun run sei extrair processo 00000.000000/0000-00
 ```
+
+Para fazer a verificação e extrair uma nova fotografia apenas quando necessário, use:
+
+```bash
+bun run sei atualizar processo 00000.000000/0000-00 --snapshot-auto --json --resumo
+```
+
+`--snapshot-auto` procura o snapshot mais recente em `dados/sei/<numero-processo>/`. Se não houver snapshot ou se o histórico remoto divergir, o comando faz nova extração e retorna o snapshot usado.
+
+## Extração em lote
+
+Para extrair vários processos, crie um arquivo de texto com um número de processo por linha. Comentários ou outros textos são ignorados; a CLI coleta os números no formato `00000.000000/0000-00`.
+
+```bash
+bun run sei extrair lote processos.txt --ultimos 4 --jsonl --quiet
+```
+
+Cada linha JSON contém `numero_processo`, `ok`, um resumo curto da extração e `resumo_movimentacao`. O comando continua nos processos seguintes quando um item falha e termina com código diferente de zero se qualquer processo falhar.
 
 ## Estrutura gerada
 
@@ -141,10 +179,14 @@ Comandos úteis para orientar uma análise:
 bun run sei inspecionar ultima-atualizacao <runDir> --json
 bun run sei inspecionar documentos <runDir> --ultimos 20 --json
 bun run sei inspecionar historico <runDir> --ultimos 50 --json
+bun run sei inspecionar historico-recente <runDir> --ultimos 4 --json
+bun run sei resumir movimentacao <runDir> --ultimos 4 --json
 bun run sei verificar atualizacao processo 00000.000000/0000-00 --snapshot <runDir> --json
 ```
 
 Para respostas baseadas em documentos do snapshot, cite o número SEI, o título e o caminho relativo do documento. Para respostas baseadas no andamento processual, cite também a data e a descrição do item em `historico[]`.
+
+Para integrações automatizadas, trate `processo.json` como fonte canônica. Use `--json --resumo`, `historico-recente`, `resumir movimentacao` ou `extrair lote --jsonl` em vez de parsear a saída JSON completa de `extrair processo --json`.
 
 ## Desenvolvimento
 

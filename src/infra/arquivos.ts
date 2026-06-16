@@ -124,6 +124,8 @@ function montarAgentsMd(processo: ProcessoExtraido) {
     `bun run inspecionar ultima-atualizacao ${JSON.stringify(".")} --json`,
     `bun run inspecionar documentos ${JSON.stringify(".")} --ultimos 20 --json`,
     `bun run inspecionar historico ${JSON.stringify(".")} --ultimos 50 --json`,
+    `bun run inspecionar historico-recente ${JSON.stringify(".")} --ultimos 4 --json`,
+    `bun run sei resumir movimentacao ${JSON.stringify(".")} --ultimos 4 --json`,
   ];
 
   return `# Instruções para agentes de IA
@@ -189,6 +191,41 @@ export async function lerProcessoJson(diretorioExecucao: string) {
   const caminho = path.join(diretorioExecucao, "processo.json");
   const conteudo = await readFile(caminho, "utf-8");
   return JSON.parse(conteudo) as ProcessoExtraido;
+}
+
+export function caminhoDiretorioSnapshotsProcesso(numeroProcesso: string, cwd = process.cwd()) {
+  return path.join(cwd, "dados", "sei", normalizarSegmentoDiretorio(numeroProcesso));
+}
+
+export async function encontrarSnapshotMaisRecenteProcesso(numeroProcesso: string, cwd = process.cwd()) {
+  const diretorioProcesso = caminhoDiretorioSnapshotsProcesso(numeroProcesso, cwd);
+  const entradas = await listarEntradasDiretorioSeExistir(diretorioProcesso);
+  if (!entradas?.length) {
+    return undefined;
+  }
+
+  const candidatos = (
+    await Promise.all(
+      entradas.map(async (entrada) => {
+        const diretorioExecucao = path.join(diretorioProcesso, entrada);
+        const caminhoProcessoJson = path.join(diretorioExecucao, "processo.json");
+        try {
+          const info = await stat(caminhoProcessoJson);
+          return { diretorioExecucao, caminhoProcessoJson, mtimeMs: info.mtimeMs };
+        } catch (error) {
+          const codigo = (error as NodeJS.ErrnoException).code;
+          if (codigo === "ENOENT" || codigo === "ENOTDIR") {
+            return undefined;
+          }
+          throw error;
+        }
+      }),
+    )
+  ).filter((item): item is { diretorioExecucao: string; caminhoProcessoJson: string; mtimeMs: number } =>
+    Boolean(item),
+  );
+
+  return candidatos.sort((a, b) => b.mtimeMs - a.mtimeMs)[0]?.diretorioExecucao;
 }
 
 export async function tamanhoArquivo(caminhoArquivo: string) {
